@@ -88,7 +88,7 @@ def get_growth_ttm(conn, code, end_month=None):
     r = g["result"]
     return envelope(
         {
-            "growth_pct": r["passenger_growth_pct"],
+            "growth_pct": r["passenger_growth_pct"], "as_of": r["current_as_of"],
             "current_ttm_passengers": r["current_value"], "prior_ttm_passengers": r["prior_value"],
             "current_as_of": r["current_as_of"], "prior_as_of": r["prior_as_of"],
         },
@@ -150,7 +150,7 @@ def get_demand_supply_gap_ttm(conn, code, end_month=None):
     confidence = "high" if pax_growth["confidence"] == "high" and seat_growth["confidence"] == "high" else "medium"
     return envelope(
         {
-            "demand_supply_gap_pct": gap_pct,
+            "demand_supply_gap_pct": gap_pct, "as_of": pax_growth["result"]["current_as_of"],
             "passenger_growth_pct": pax_growth["result"]["passenger_growth_pct"],
             "seat_growth_pct": seat_growth["result"]["seat_growth_pct"],
         },
@@ -189,20 +189,30 @@ def get_congestion_signal_ttm(conn, code, end_month=None):
         return envelope(None, method, caveats, congestion["source"], "low")
 
     return envelope(
-        {"congestion_pct": pct_delayed, "coverage_pct": coverage_pct},
+        {"congestion_pct": pct_delayed, "coverage_pct": coverage_pct, "as_of": congestion["result"]["as_of"]},
         method, caveats, congestion["source"], congestion["confidence"],
     )
 
 
 def compute_signals(conn, code, end_month=None):
-    """All four signals for one airport, each its own envelope. Never imputes across signals."""
+    """
+    All four signals for one airport, each its own envelope, never imputed
+    across signals. All four are resolved to the SAME as_of window: by
+    default that's the latest source-A (T-100) month, not each signal's own
+    default (get_congestion_ttm would otherwise independently default to
+    OTP's own latest cached month, which can differ from source-A's --
+    see docs/DECISIONS.md). Every signal that returns a result exposes that
+    window as result["as_of"].
+    """
     airport_code = validate_airport_code(conn, code)
+    resolved_end = end_month if end_month is not None else get_latest_cached_month(conn)
     return {
         "airport": airport_code,
-        "growth": get_growth_ttm(conn, airport_code, end_month),
-        "load_factor": get_load_factor_ttm(conn, airport_code, end_month),
-        "demand_supply_gap": get_demand_supply_gap_ttm(conn, airport_code, end_month),
-        "congestion": get_congestion_signal_ttm(conn, airport_code, end_month),
+        "as_of": f"{resolved_end[0]:04d}-{resolved_end[1]:02d}" if resolved_end is not None else None,
+        "growth": get_growth_ttm(conn, airport_code, resolved_end),
+        "load_factor": get_load_factor_ttm(conn, airport_code, resolved_end),
+        "demand_supply_gap": get_demand_supply_gap_ttm(conn, airport_code, resolved_end),
+        "congestion": get_congestion_signal_ttm(conn, airport_code, resolved_end),
     }
 
 
