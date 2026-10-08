@@ -12,6 +12,17 @@ data would be required -- these are listed, not guessed around.
 # not derived from any source.
 LOAD_FACTOR_HIGH = 0.85
 
+# HYPOTHESES: z-score thresholds used only to decide whether an inference
+# rule fires in unmet_demand.py. These are analyst judgment calls, not
+# measured or derived values -- changing them changes which inferences are
+# drawn from the same measured facts.
+HYPOTHESES = {
+    "capacity_pressure_load_factor_z": 1.0,
+    "capacity_pressure_gap_z": 0.5,
+    "delay_linked_strain_delayed_share_z": 1.0,
+    "high_utilization_gap_z": 0.5,
+}
+
 UNKNOWABLE = [
     {
         "name": "passengers_priced_or_scheduled_out",
