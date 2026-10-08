@@ -6,13 +6,14 @@ use real_conn, which skips loudly (not silently) if it's missing.
 """
 
 import os
+import sqlite3
 import sys
 
 import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.cache import accessors
+from src.cache import accessors, db
 from src.clients.ourairports import OurAirportsError, parse_us_airports
 from src.clients.source_a import _intl
 
@@ -129,6 +130,39 @@ def test_congestion_month_missing_returns_none(fixture_conn):
     r = accessors.get_congestion_month(fixture_conn, "TST", 1999, 1)
     assert r["result"] is None
     assert r["source"] == "no cached data"
+
+
+def test_congestion_ttm_excludes_null_field_not_zeroed():
+    # A NULL sum_taxi_out in one month must be excluded from the sum (not
+    # treated as 0, which would silently drag mean_taxi_out_min down) and
+    # reported in caveats -- same no-imputation rule as source_a sums.
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    db.init_schema(conn)
+    db.upsert_source_a_rows(conn, [{
+        "origin_airport_code": "NUL", "year": 2025, "month": 1,
+        "reporting_month": "2025-01-01T00:00:00.000", "origin_airport_name": "Null Test",
+        "total_departures": 5.0, "total_passengers": 50.0, "total_seats": 60.0,
+        "total_load_factor": 83.3, "total_distance_flight_sm": 900.0,
+        "domestic_departures": 5.0, "domestic_passengers": 50.0, "domestic_seats": 60.0,
+        "domestic_load_factor": 83.3, "intl_departures": 0.0, "intl_passengers": 0.0, "intl_seats": 0.0,
+    }], "fixture", "2026-01-01T00:00:00Z")
+    db.upsert_otp_rows(conn, {
+        (2025, 1, "NUL"): {
+            "n_flights": 10, "n_cancelled": 0, "n_diverted": 0,
+            "n_taxi_out_obs": 10, "sum_taxi_out": None,  # NULL -- must be excluded, not treated as 0
+            "n_dep_delay_obs": 10, "sum_dep_delay_min": 50.0, "n_dep_del15": 1,
+            "n_arr_delay_obs": 10, "sum_arr_delay_min": 40.0, "n_arr_del15": 1,
+            "n_carriers": 1,
+        },
+    }, "fixture OTP", "2026-01-01T00:00:00Z")
+
+    r = accessors.get_congestion_ttm(conn, "NUL", end_month=(2025, 1))
+    assert r["result"]["mean_taxi_out_min"] is None
+    assert r["result"]["flights"] == 10
+    assert r["result"]["mean_dep_delay_min"] == pytest.approx(5.0)
+    assert any("sum_taxi_out: excluded 1/1" in c for c in r["caveats"])
+    conn.close()
 
 
 @pytest.mark.parametrize("call", [

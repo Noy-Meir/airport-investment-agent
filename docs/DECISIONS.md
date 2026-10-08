@@ -57,6 +57,53 @@ international. Use **only** for congestion metrics. The spike's OTP
 long-haul numbers for ANC were never reproduced and look inconsistent with
 T-100 — **do not use OTP for long-haul share**.
 
+### Phase 2a: OTP ingest + reconciliation (report, not assertion)
+`src/clients/otp.py` downloads monthly OTP ZIPs (12 months, 2025-08..2026-07,
+343MB total, fetched after user confirmation per CLAUDE.md's cost rules).
+`src/cache/otp_aggregate.py` aggregates per (year, month, origin) into sums
+and counts (never means), excluding cancelled flights from taxi/delay
+observations and never imputing a missing field. `get_congestion_ttm` /
+`get_congestion_month` (`src/cache/accessors.py`) derive the rates from
+those sums/counts.
+
+`scripts/build_cache.py`'s `report_otp_reconciliation` recomputes July 2026
+numbers for SFO/LAX/SNA/ANC and prints them next to the earlier spike
+numbers on every build run, as a report, not a hardcoded verdict:
+- **Flight counts match the spike exactly** for all four airports (SFO
+  13,841; LAX 17,454; SNA 3,992; ANC 2,513).
+- Mean taxi-out and mean departure delay match the spike within ~0.1 min
+  for SFO/LAX/SNA.
+- **%dep-delay>=15min runs consistently ~1-1.2pp higher** than the spike for
+  all three (SFO 35.46 vs 34.3, LAX 25.51 vs 24.8, SNA 25.97 vs 25.0).
+  Flight counts match exactly and taxi-out/mean delay agree within ~0.1 min,
+  so the spike's OTP congestion numbers were real -- the gap is explained:
+  the spike used a strict `> 15 min` threshold on `DepDelayMinutes`, while
+  the cache here sums BTS's own `DepDel15` flag (`>= 15 min`). Not a data
+  discrepancy, a threshold-convention difference.
+- ANC has no spike figures beyond flight count to compare against (see
+  above); OTP-derived ANC cancellation/taxi/delay numbers are new, not a
+  reconciliation. The spike's ANC OTP distance shares (40.8/24.8/8.8%) were
+  not reproduced here -- `otp_airport_month` stores no per-flight distance,
+  only sums/counts -- but they are not shown to be *wrong*, just
+  unverifiable from this cache. T-100 (source B) remains the source for
+  ANC long-haul share: it covers international and freighter flights that
+  OTP excludes entirely.
+
+### Congestion snapshot (`get_congestion_ttm`, trailing 12 months ending 2026-07, not re-built)
+| Airport | Flights | Cancel % | Mean taxi-out (min) | Mean dep delay (min) | % delayed >=15min | Coverage vs T-100 |
+|---|---|---|---|---|---|---|
+| SFO | 147,566 | 1.00 | 22.45 | 17.85 | 24.12 | 96.6% |
+| LAX | 190,106 | 0.94 | 18.07 | 15.09 | 20.24 | 91.9% |
+| SNA | 45,231 | 1.07 | 16.09 | 15.24 | 20.20 | 90.0% |
+| ANC | 20,008 | 1.14 | 14.93 | 11.75 | 16.31 | 25.6% |
+| BOS | 143,447 | 2.82 | 21.35 | 18.31 | 23.43 | 88.8% |
+
+Coverage = OTP flights / T-100 domestic_departures over the overlapping
+months. T-100 domestic_departures includes freighters and carriers that do
+not report to OTP, so this ratio understates how much *passenger* traffic
+OTP actually covers -- ANC's low 25.6% in particular reflects its freighter
+volume, not OTP data loss.
+
 ## Volume floor
 - Calendar-year total passengers >= 100,000 (CY2024) -> 222 airports.
 - Growth stdev: 0.24 for the 10k-100k bucket vs. 0.08 for the 100k-1M
@@ -135,16 +182,26 @@ will not join.
 - Source-A default fetch range widened to 2023-2026 (data runs through
   2026-04) so a real trailing-12-month window is available.
 
+## Production definition: volume floor / hub tiers / regions
+Decision: the **production** definition of the volume floor, hub tiers and
+New England region list is **trailing 12 months (TTM) ending at the latest
+month present in source A** (`compute_hub_tiers_ttm`,
+`list_new_england_airports_ttm`, `get_ttm_totals`), not calendar-year.
+`data/reference/*.json` and `tests/test_golden.py` stay pinned to CY2024 as
+a fixed regression baseline -- they are not meant to track production, only
+to catch unintended changes to the aggregation code itself.
+
+One boundary effect from this choice, visible in the TTM vs. CY2024 diff
+below: MDW moves from the large tier to the medium tier under TTM. Its
+national passenger share sits right at the large-tier threshold, so this is
+a threshold-boundary effect of the trailing window, not a data problem.
+
 ## Open items
-- Reconcile T-100 vs. OTP long-haul numbers for ANC.
 - FAA cross-check of hub tiers (large/medium/small) against FAA's own list.
 - `buildability.json` facts flagged `needs_verification` (exact current
-  slot-cap / exemption counts) should be rechecked before being surfaced as
-  a firm number rather than a general constraint description.
-- Now that the volume floor/hub tiers/New England list have been computed
-  on a real trailing-12-month window (see the diff below), decide whether
-  to switch the golden/production definition from CY2024 to TTM, or keep
-  CY2024 as the stable baseline and surface TTM only as a secondary view.
+  slot-cap / exemption counts, SNA's post-2025 MAP mitigation status) should
+  be rechecked before being surfaced as a firm number rather than a general
+  constraint description.
 
 <!-- TTM_DIFF_START (auto-generated by scripts/build_cache.py -- do not hand-edit this block) -->
 

@@ -66,7 +66,7 @@
     "caveats": [
       "volume floor 100,000 is provisional pending trailing-12-month confirmation (see docs/DECISIONS.md)"
     ],
-    "source": "OurAirports airports.csv, cached 2026-10-08T15:37:09Z + CY2024 total_passengers (excluded 0 NULL month-rows)",
+    "source": "OurAirports airports.csv, cached 2026-10-08T21:39:57Z + CY2024 total_passengers (excluded 0 NULL month-rows)",
     "confidence": "medium"
   }
 }

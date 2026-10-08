@@ -9,6 +9,7 @@ years are validated as ints before being embedded.
 
 import json
 import logging
+import socket
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -75,7 +76,7 @@ def _get_page(year, offset):
     try:
         with urllib.request.urlopen(req, timeout=TIMEOUT_SECONDS) as resp:
             return json.loads(resp.read().decode())
-    except urllib.error.URLError as e:
+    except (urllib.error.URLError, TimeoutError, socket.timeout) as e:
         raise SourceAError(f"request failed for year={year} offset={offset}: {e}") from e
 
 

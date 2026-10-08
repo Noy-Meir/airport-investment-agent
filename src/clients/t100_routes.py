@@ -20,6 +20,7 @@ import http.cookiejar
 import logging
 import os
 import re
+import socket
 import sys
 import time
 import urllib.error
@@ -144,7 +145,7 @@ def download_year(year, raw_dir=RAW_DIR):
                 f.write(content)
             logger.info("year=%s saved %s (%d bytes)", year, dest_path, len(content))
             return dest_path
-        except (T100DownloadError, urllib.error.URLError, TimeoutError) as e:
+        except (T100DownloadError, urllib.error.URLError, TimeoutError, socket.timeout) as e:
             last_error = e
             logger.warning("year=%s attempt=%d failed: %s", year, attempt, e)
             if attempt < MAX_ATTEMPTS:
