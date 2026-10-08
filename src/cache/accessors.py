@@ -25,6 +25,17 @@ from src.cache.config import (
     VOLUME_FLOOR_PAX,
     VOLUME_FLOOR_YEAR,
 )
+# Hub tier + region (New England) logic lives in src/reference/ (Phase 2b
+# refactor) -- re-exported here under their original names/signatures so
+# existing callers (e.g. scripts/build_cache.py) are unaffected.
+from src.reference.hub_tiers import compute_hub_tiers, compute_hub_tiers_ttm
+from src.reference.hub_tiers import hub_tier_result as _hub_tier_result
+from src.reference.pax import get_latest_cached_month
+from src.reference.pax import pax_by_airport_for_year as _pax_by_airport_for_year
+from src.reference.pax import pax_by_airport_ttm as _pax_by_airport_ttm
+from src.reference.pax import trailing_12_window as _trailing_12_window
+from src.reference.regions import list_new_england_airports, list_new_england_airports_ttm
+from src.reference.regions import region_list as _region_list
 
 CLASS_GROUPS = {
     "all": PASSENGER_CLASSES | CARGO_CLASSES,
@@ -213,121 +224,9 @@ def get_long_haul_share(conn, origin, year, thresholds=LONG_HAUL_THRESHOLDS_MI, 
     )
 
 
-def list_new_england_airports(conn, floor=VOLUME_FLOOR_PAX, year=VOLUME_FLOOR_YEAR):
-    """
-    New England = CT/ME/MA/NH/RI/VT (OurAirports iso_region), intersected
-    with source-A airports whose CY `year` total_passengers >= `floor`.
-    Built in code, not from the scheduled_service flag alone -- see
-    docs/DECISIONS.md. Months with NULL total_passengers are excluded from
-    the sum, not zeroed.
-    """
-    pax_by_code, excluded = _pax_by_airport_for_year(conn, year)
-    return _region_list(conn, pax_by_code, floor, source_note=f"CY{year} total_passengers (excluded {excluded} NULL month-rows)")
-
-
-def _pax_by_airport_for_year(conn, year):
-    rows = conn.execute(
-        "SELECT origin_airport_code, total_passengers FROM source_a_airport_month WHERE year = ?",
-        (year,),
-    ).fetchall()
-    by_code = {}
-    excluded = 0
-    for r in rows:
-        if r["total_passengers"] is None:
-            excluded += 1
-            continue
-        by_code[r["origin_airport_code"]] = by_code.get(r["origin_airport_code"], 0) + r["total_passengers"]
-    return by_code, excluded
-
-
-def _region_list(conn, pax_by_code, floor, source_note):
-    regions = [f"US-{st}" for st in NEW_ENGLAND_STATES]
-    placeholders = ",".join("?" for _ in regions)
-    oa_rows = conn.execute(
-        f"SELECT iata_code, name, iso_region, source, fetched_at FROM ourairports WHERE iso_region IN ({placeholders})",
-        regions,
-    ).fetchall()
-
-    above = []
-    for r in oa_rows:
-        pax = pax_by_code.get(r["iata_code"])
-        if pax is not None and pax >= floor:
-            above.append({"code": r["iata_code"], "name": r["name"], "state": r["iso_region"][3:], "passengers": pax})
-    above.sort(key=lambda x: x["code"])
-
-    source = "no cached data" if not oa_rows else f"{oa_rows[0]['source']}, cached {oa_rows[0]['fetched_at']} + {source_note}"
-    return _envelope(
-        above,
-        f"OurAirports iso_region in {NEW_ENGLAND_STATES} intersected with {source_note} >= {floor:,}",
-        [f"volume floor {floor:,} is provisional pending trailing-12-month confirmation (see docs/DECISIONS.md)"],
-        source, "medium",
-    )
-
-
-def compute_hub_tiers(conn, year=HUB_TIER_YEAR, thresholds=HUB_TIER_THRESHOLDS):
-    """
-    Hub tier by share of national CY `year` total_passengers (source A),
-    thresholds as a fraction of the national total. Large/medium/small are
-    mutually exclusive, in descending threshold order. Months with NULL
-    total_passengers are excluded from the sum, not zeroed.
-    """
-    pax_by_code, excluded = _pax_by_airport_for_year(conn, year)
-    row = conn.execute(
-        "SELECT source, fetched_at FROM source_a_airport_month WHERE year = ? LIMIT 1", (year,)
-    ).fetchone()
-    if row is None:
-        return _envelope(None, "share of national CY total_passengers", [f"no source-A rows cached for {year}"], "no cached data", "low")
-    caveats = [f"excluded {excluded} month-row(s) with NULL total_passengers from the sums"] if excluded else []
-    return _envelope(
-        *_hub_tier_result(pax_by_code, thresholds, f"CY{year} total_passengers"),
-        caveats, _source_stamp(row["source"], row["fetched_at"]), "high",
-    )
-
-
-def _hub_tier_result(pax_by_code, thresholds, label):
-    national = sum(pax_by_code.values())
-    tiers = {"large": [], "medium": [], "small": []}
-    ordered = sorted(thresholds.items(), key=lambda kv: -kv[1])
-    for code, pax in pax_by_code.items():
-        share = pax / national if national else 0
-        for tier_name, thresh in ordered:
-            if share >= thresh:
-                tiers[tier_name].append({"code": code, "passengers": pax, "share_pct": round(100 * share, 4)})
-                break
-    for t in tiers:
-        tiers[t].sort(key=lambda x: -x["passengers"])
-    result = {
-        "national_total_passengers": national, "tiers": tiers,
-        "counts": {k: len(v) for k, v in tiers.items()},
-    }
-    method = f"share of national {label}, thresholds {thresholds}"
-    return result, method
-
-
 # ---------------------------------------------------------------------------
 # Trailing-12-month (TTM) accessors
 # ---------------------------------------------------------------------------
-
-def get_latest_cached_month(conn):
-    """Returns (year, month) of the most recent source-A row in the cache, or None if empty."""
-    row = conn.execute("SELECT MAX(year * 100 + month) AS ym FROM source_a_airport_month").fetchone()
-    if row is None or row["ym"] is None:
-        return None
-    ym = int(row["ym"])
-    return ym // 100, ym % 100
-
-
-def _trailing_12_window(end_year, end_month):
-    months = []
-    y, m = end_year, end_month
-    for _ in range(12):
-        months.append((y, m))
-        m -= 1
-        if m == 0:
-            m = 12
-            y -= 1
-    return sorted(months)
-
 
 def get_ttm_totals(conn, airport_code, end_month=None):
     """
@@ -378,53 +277,6 @@ def get_ttm_totals(conn, airport_code, end_month=None):
         totals, "sum(source_a_airport_month) over trailing 12 months, excluding NULL months", caveats,
         _source_stamp(rows[0]["source"], rows[0]["fetched_at"]), "high" if len(rows) == 12 else "medium",
     )
-
-
-def _pax_by_airport_ttm(conn, end_month=None):
-    if end_month is None:
-        latest = get_latest_cached_month(conn)
-        if latest is None:
-            return {}, 0, None
-        end_year, end_m = latest
-    else:
-        end_year, end_m = end_month
-    window = _trailing_12_window(end_year, end_m)
-    ym_values = [y * 100 + m for y, m in window]
-    placeholders = ",".join("?" for _ in ym_values)
-    rows = conn.execute(
-        f"SELECT origin_airport_code, total_passengers FROM source_a_airport_month WHERE (year * 100 + month) IN ({placeholders})",
-        ym_values,
-    ).fetchall()
-    by_code = {}
-    excluded = 0
-    for r in rows:
-        if r["total_passengers"] is None:
-            excluded += 1
-            continue
-        by_code[r["origin_airport_code"]] = by_code.get(r["origin_airport_code"], 0) + r["total_passengers"]
-    as_of = f"{end_year:04d}-{end_m:02d}"
-    return by_code, excluded, as_of
-
-
-def compute_hub_tiers_ttm(conn, end_month=None, thresholds=HUB_TIER_THRESHOLDS):
-    """Same as compute_hub_tiers, but over the trailing 12 months ending at the latest cached month (or `end_month`)."""
-    pax_by_code, excluded, as_of = _pax_by_airport_ttm(conn, end_month)
-    if as_of is None:
-        return _envelope(None, "share of national TTM total_passengers", ["cache is empty"], "no cached data", "low")
-    caveats = [f"trailing 12 months ending {as_of}"]
-    if excluded:
-        caveats.append(f"excluded {excluded} month-row(s) with NULL total_passengers from the sums")
-    result, method = _hub_tier_result(pax_by_code, thresholds, f"TTM total_passengers ending {as_of}")
-    row = conn.execute("SELECT source, fetched_at FROM source_a_airport_month ORDER BY fetched_at DESC LIMIT 1").fetchone()
-    return _envelope(result, method, caveats, _source_stamp(row["source"], row["fetched_at"]) if row else "no cached data", "high")
-
-
-def list_new_england_airports_ttm(conn, end_month=None, floor=VOLUME_FLOOR_PAX):
-    """Same as list_new_england_airports, but over the trailing 12 months ending at the latest cached month (or `end_month`)."""
-    pax_by_code, excluded, as_of = _pax_by_airport_ttm(conn, end_month)
-    if as_of is None:
-        return _envelope(None, "OurAirports intersected with TTM total_passengers", ["cache is empty"], "no cached data", "low")
-    return _region_list(conn, pax_by_code, floor, source_note=f"TTM total_passengers ending {as_of} (excluded {excluded} NULL month-rows)")
 
 
 OTP_SUM_FIELDS = [
