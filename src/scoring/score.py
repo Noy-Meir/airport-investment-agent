@@ -73,7 +73,7 @@ def _buildability_flag(code):
         data = json.load(f)
     airport = data.get("airports", {}).get(code)
     if airport is None:
-        return {"has_constraints": False, "constraints": [], "note": "no curated buildability constraints for this airport"}
+        return {"has_constraints": None, "constraints": [], "note": "no entry on file (unknown, not 'none')"}
     return {"has_constraints": True, "constraints": airport["constraints"], "note": airport.get("name")}
 
 

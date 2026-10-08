@@ -250,7 +250,8 @@ def test_score_airport_all_four_signals_scored(score_fixture_conn):
     assert not any("renormalized" in c for c in r["caveats"])
     # buildability is reported but is not folded into the composite.
     assert "buildability" in result
-    assert result["buildability"]["has_constraints"] is False
+    assert result["buildability"]["has_constraints"] is None
+    assert result["buildability"]["note"] == "no entry on file (unknown, not 'none')"
 
 
 def test_compute_signals_shares_one_as_of_window(score_fixture_conn):
