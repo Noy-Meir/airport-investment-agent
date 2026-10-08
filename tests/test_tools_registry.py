@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from src.tools.registry import TOOLS, call_tool, get_tool_specs
 
 SCOPE = {"region": "new_england"}
@@ -11,6 +13,7 @@ def test_get_tool_specs_shapes():
     assert names == {
         "rank_airports", "score_airport", "compare_airports", "sensitivity",
         "list_region_airports", "get_airport_traffic", "compare_congestion", "get_buildability",
+        "get_long_haul_share",
     }
     for s in specs:
         assert set(s) == {"name", "description", "input_schema"}
@@ -142,6 +145,14 @@ def test_compare_congestion_runs_and_is_json_serializable(fixture_conn):
     json.dumps(result)
 
 
+def test_compare_congestion_reports_as_of_and_domestic_only_caveat(fixture_conn):
+    result = call_tool("compare_congestion", {"codes": ["TST"]}, conn=fixture_conn)
+    entry = result["result"]["compared"][0]
+    assert "as_of" in entry
+    assert entry["as_of"] is not None
+    assert any("domestic departures only" in c for c in result["caveats"])
+
+
 def test_compare_congestion_low_coverage_is_never_hidden(fixture_conn):
     result = call_tool("compare_congestion", {"codes": ["TST"]}, conn=fixture_conn)
     entry = result["result"]["compared"][0]
@@ -167,6 +178,31 @@ def test_get_buildability_no_entry_says_no_constraints_on_file(fixture_conn):
     result = call_tool("get_buildability", {"code": "BOS"}, conn=fixture_conn)
     assert result["result"]["has_constraints"] is False
     assert result["result"]["note"] == "no constraints on file"
+
+
+def test_get_long_haul_share_anc_matches_decisions_md(real_conn):
+    result = call_tool("get_long_haul_share", {"code": "ANC"}, conn=real_conn)
+    assert "error" not in result
+    json.dumps(result)
+    all_group = result["result"]["groups"]["all"]
+    assert all_group["shares_pct"][2000] == pytest.approx(47.4, abs=0.05)
+    assert all_group["shares_pct"][2500] == pytest.approx(43.2, abs=0.05)
+    assert all_group["shares_pct"][3000] == pytest.approx(31.0, abs=0.05)
+    assert "passenger" in result["result"]["groups"]
+    assert any("no official" in c for c in result["caveats"])
+
+
+def test_get_long_haul_share_class_group_changes_denominator(real_conn):
+    passenger_only = call_tool("get_long_haul_share", {"code": "ANC", "class_group": "passenger"}, conn=real_conn)
+    all_classes = call_tool("get_long_haul_share", {"code": "ANC", "class_group": "all"}, conn=real_conn)
+    passenger_denom = passenger_only["result"]["groups"]["passenger"]["denominator_departures"]
+    all_denom = all_classes["result"]["groups"]["all"]["denominator_departures"]
+    assert passenger_denom != all_denom
+
+
+def test_get_long_haul_share_unknown_airport_never_raises(fixture_conn):
+    result = call_tool("get_long_haul_share", {"code": "ZZZ"}, conn=fixture_conn)
+    assert result["error"]["type"] == "AirportNotFoundError"
 
 
 def test_get_buildability_unknown_airport_never_raises(fixture_conn):

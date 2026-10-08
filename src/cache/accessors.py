@@ -188,12 +188,15 @@ def get_long_haul_share(conn, origin, year, thresholds=LONG_HAUL_THRESHOLDS_MI, 
 
     total = sum(r["departures_performed"] for r in valid_rows)
     result = {}
+    long_haul_departures = {}
     for thr in thresholds:
         if total == 0:
             result[thr] = None
+            long_haul_departures[thr] = None
             continue
         long_deps = sum(r["departures_performed"] for r in valid_rows if r["distance"] >= thr)
         result[thr] = round(100.0 * long_deps / total, 1)
+        long_haul_departures[thr] = long_deps
 
     caveats = [f"class_group={class_group} ({sorted(CLASS_GROUPS[class_group])}), weighted by DEPARTURES_PERFORMED"]
     if null_dep_rows:
@@ -218,7 +221,15 @@ def get_long_haul_share(conn, origin, year, thresholds=LONG_HAUL_THRESHOLDS_MI, 
             f"(origin == dest) combos as short-haul"
         )
     return _envelope(
-        {"shares_pct": result, "total_departures": total},
+        {
+            "shares_pct": result,
+            "total_departures": total,
+            "long_haul_departures": long_haul_departures,
+            "excluded_departures": {
+                "missing_distance": missing_departures,
+                "zero_distance_error": zero_error_departures,
+            },
+        },
         "route-level T-100 (source B), departures-weighted share by DISTANCE threshold",
         caveats, source_stamp, "high",
     )
@@ -313,6 +324,12 @@ def get_congestion_month(conn, code, year, month):
     }
     caveats = ["OTP covers domestic reporting carriers only -- no freighters, no international flights"]
     return _envelope(result, method, caveats, _source_stamp(row["source"], row["fetched_at"]), "high")
+
+
+def get_latest_t100_route_year(conn):
+    """Returns the latest year present in t100_route_agg, or None if empty."""
+    row = conn.execute("SELECT MAX(year) AS y FROM t100_route_agg").fetchone()
+    return None if row is None or row["y"] is None else int(row["y"])
 
 
 def get_latest_cached_otp_month(conn):

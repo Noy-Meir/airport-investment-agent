@@ -15,8 +15,15 @@ crash the agent loop.
 
 import json
 
-from src.cache.accessors import AirportNotFoundError, get_congestion_ttm, get_ttm_totals, validate_airport_code
-from src.cache.config import VOLUME_FLOOR_PAX
+from src.cache.accessors import (
+    AirportNotFoundError,
+    get_congestion_ttm,
+    get_latest_t100_route_year,
+    get_long_haul_share,
+    get_ttm_totals,
+    validate_airport_code,
+)
+from src.cache.config import LONG_HAUL_THRESHOLDS_MI, VOLUME_FLOOR_PAX
 from src.reference.buildability import get_buildability as _buildability_lookup
 from src.reference.envelope import envelope
 from src.reference.pax import pax_by_airport_ttm
@@ -141,7 +148,7 @@ def _compare_congestion(args, conn):
         cong = get_congestion_ttm(conn, code)
         if cong["result"] is None:
             entries.append({
-                "airport": code, "flights": None, "delayed_share_pct": None,
+                "airport": code, "flights": None, "delayed_share_pct": None, "as_of": None,
                 "coverage_pct": None, "low_coverage": True, "caveats": cong["caveats"],
             })
             continue
@@ -151,6 +158,7 @@ def _compare_congestion(args, conn):
             "airport": code,
             "flights": cong["result"]["flights"],
             "delayed_share_pct": cong["result"]["pct_dep_delay_ge15min"],
+            "as_of": cong["result"]["as_of"],
             "coverage_pct": coverage_pct,
             "low_coverage": coverage_pct is None or coverage_pct < 50.0,
             "caveats": cong["caveats"],
@@ -161,8 +169,59 @@ def _compare_congestion(args, conn):
         "OTP/T-100 coverage; coverage < 50% is returned with low_coverage=true, never hidden"
     )
     confidence = "medium" if any(e["low_coverage"] for e in entries) else "high"
+    caveats = [
+        "congestion is domestic departures only (OTP covers domestic reporting carriers; "
+        "international departures are not measured)",
+    ]
     return envelope(
-        {"codes": codes, "compared": entries}, method, [],
+        {"codes": codes, "compared": entries}, method, caveats,
+        "; ".join(sorted(set(sources))) if sources else "no cached data", confidence,
+    )
+
+
+def _get_long_haul_share(args, conn):
+    code = validate_airport_code(conn, args["code"])
+    thresholds = tuple(args.get("thresholds_mi", LONG_HAUL_THRESHOLDS_MI))
+    requested_group = args.get("class_group")
+    groups_to_fetch = [requested_group] if requested_group else ["passenger", "all"]
+
+    year = get_latest_t100_route_year(conn)
+    if year is None:
+        return envelope(
+            None, "route-level T-100 (source B), departures-weighted long-haul share",
+            ["no route-level T-100 data cached"], "no cached data", "low",
+        )
+
+    caveats = [
+        "\"long-haul\" has no official FAA/BTS distance threshold -- thresholds_mi is a "
+        "caller-supplied parameter, not an established fact",
+    ]
+    groups = {}
+    sources = []
+    confidences = []
+    for g in groups_to_fetch:
+        sub = get_long_haul_share(conn, code, year, thresholds=thresholds, class_group=g)
+        caveats.append(f"{g}: {'; '.join(sub['caveats'])}")
+        if sub["result"] is None:
+            groups[g] = None
+            continue
+        groups[g] = {
+            "shares_pct": sub["result"]["shares_pct"],
+            "numerator_departures": sub["result"]["long_haul_departures"],
+            "denominator_departures": sub["result"]["total_departures"],
+            "excluded_departures": sub["result"]["excluded_departures"],
+        }
+        sources.append(sub["source"])
+        confidences.append(sub["confidence"])
+
+    confidence = min(confidences, key=lambda c: _CONF_ORDER[c]) if confidences else "low"
+    result = {"airport": code, "year": year, "thresholds_mi": list(thresholds), "groups": groups}
+    method = (
+        "route-level T-100 (source B) departures-weighted share by DISTANCE threshold, by class_group "
+        "(src/cache/accessors.get_long_haul_share); thin wrapper, no new calculation"
+    )
+    return envelope(
+        result, method, caveats,
         "; ".join(sorted(set(sources))) if sources else "no cached data", confidence,
     )
 
@@ -300,6 +359,33 @@ TOOLS = {
             "additionalProperties": False,
         },
         "fn": _compare_congestion,
+    },
+    "get_long_haul_share": {
+        "description": (
+            "Share of departures on long-haul routes (by DISTANCE threshold, weighted by "
+            "DEPARTURES_PERFORMED) for one airport, from route-level T-100. 'Long-haul' has no "
+            "official FAA/BTS threshold, so thresholds_mi is a parameter, not a fact -- default "
+            "[2000, 2500, 3000] miles. By default returns passenger and all-classes (passenger+cargo) "
+            "side by side; pass class_group to narrow to one. Use for 'what share of X's flights are "
+            "long-haul?' style questions."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "code": {"type": "string", "description": "IATA airport code, e.g. 'ANC'."},
+                "thresholds_mi": {
+                    "type": "array", "items": {"type": "integer"},
+                    "description": "Distance thresholds in miles (default [2000, 2500, 3000]).",
+                },
+                "class_group": {
+                    "type": "string", "enum": ["passenger", "cargo", "all"],
+                    "description": "Restrict to one T-100 CLASS group. Omit to get passenger and all side by side.",
+                },
+            },
+            "required": ["code"],
+            "additionalProperties": False,
+        },
+        "fn": _get_long_haul_share,
     },
     "get_buildability": {
         "description": (
