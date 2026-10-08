@@ -57,6 +57,32 @@ international. Use **only** for congestion metrics. The spike's OTP
 long-haul numbers for ANC were never reproduced and look inconsistent with
 T-100 — **do not use OTP for long-haul share**.
 
+### Phase 2a: OTP ingest + reconciliation (report, not assertion)
+`src/clients/otp.py` downloads monthly OTP ZIPs (12 months, 2025-08..2026-07,
+343MB total, fetched after user confirmation per CLAUDE.md's cost rules).
+`src/cache/otp_aggregate.py` aggregates per (year, month, origin) into sums
+and counts (never means), excluding cancelled flights from taxi/delay
+observations and never imputing a missing field. `get_congestion_ttm` /
+`get_congestion_month` (`src/cache/accessors.py`) derive the rates from
+those sums/counts.
+
+`scripts/build_cache.py`'s `report_otp_reconciliation` recomputes July 2026
+numbers for SFO/LAX/SNA/ANC and prints them next to the earlier spike
+numbers on every build run, as a report, not a hardcoded verdict:
+- **Flight counts match the spike exactly** for all four airports (SFO
+  13,841; LAX 17,454; SNA 3,992; ANC 2,513).
+- Mean taxi-out and mean departure delay match the spike within ~0.1 min
+  for SFO/LAX/SNA.
+- **%dep-delay>=15min runs consistently ~1-1.2pp higher** than the spike for
+  all three (SFO 35.46 vs 34.3, LAX 25.51 vs 24.8, SNA 25.97 vs 25.0). The
+  consistent direction/magnitude suggests a methodology difference (e.g. the
+  spike's delay-minutes field or >=15min threshold convention may differ
+  from `DepDelayMinutes`/`DepDel15` as pulled here) rather than noise — open
+  item below, not yet root-caused.
+- ANC has no spike figures beyond flight count to compare against (see
+  above); OTP-derived ANC cancellation/taxi/delay numbers are new, not a
+  reconciliation.
+
 ## Volume floor
 - Calendar-year total passengers >= 100,000 (CY2024) -> 222 airports.
 - Growth stdev: 0.24 for the 10k-100k bucket vs. 0.08 for the 100k-1M
@@ -137,6 +163,10 @@ will not join.
 
 ## Open items
 - Reconcile T-100 vs. OTP long-haul numbers for ANC.
+- Root-cause the ~1-1.2pp %dep-delay>=15min gap vs. the spike's SFO/LAX/SNA
+  July 2026 numbers (see "Phase 2a: OTP ingest + reconciliation" above) --
+  likely a delay-minutes field or threshold convention difference, not yet
+  confirmed.
 - FAA cross-check of hub tiers (large/medium/small) against FAA's own list.
 - `buildability.json` facts flagged `needs_verification` (exact current
   slot-cap / exemption counts) should be rechecked before being surfaced as

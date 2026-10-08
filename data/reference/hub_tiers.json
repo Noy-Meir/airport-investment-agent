@@ -722,6 +722,6 @@
   },
   "method": "share of national CY2024 total_passengers, thresholds {'large': 0.01, 'medium': 0.0025, 'small': 0.0005}",
   "caveats": [],
-  "source": "BTS T-100 Segment Summary by Origin Airport (r495-tyji), cached 2026-10-08T15:35:56Z",
+  "source": "BTS T-100 Segment Summary by Origin Airport (r495-tyji), cached 2026-10-08T21:36:16Z",
   "confidence": "high"
 }
