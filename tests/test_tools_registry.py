@@ -8,7 +8,10 @@ SCOPE = {"region": "new_england"}
 def test_get_tool_specs_shapes():
     specs = get_tool_specs()
     names = {s["name"] for s in specs}
-    assert names == {"rank_airports", "score_airport", "compare_airports", "sensitivity"}
+    assert names == {
+        "rank_airports", "score_airport", "compare_airports", "sensitivity",
+        "list_region_airports", "get_airport_traffic", "compare_congestion", "get_buildability",
+    }
     for s in specs:
         assert set(s) == {"name", "description", "input_schema"}
         assert isinstance(s["description"], str) and s["description"]
@@ -87,3 +90,85 @@ def test_compare_airports_peer_group_is_trimmed_to_basis_and_size(fixture_conn):
     result = call_tool("compare_airports", {"codes": ["BOS", "TST"]}, conn=fixture_conn)
     for entry in result["result"]["compared"]:
         assert set(entry["peer_group"]) == {"basis", "size"}
+
+
+def test_score_airport_includes_buildability_flag(fixture_conn):
+    result = call_tool("score_airport", {"code": "BOS"}, conn=fixture_conn)
+    assert "buildability" in result["result"]
+
+
+def test_rank_airports_includes_buildability_flag(fixture_conn):
+    result = call_tool("rank_airports", {"scope": {"tier": "large"}}, conn=fixture_conn)
+    assert result["result"]["ranked"]
+    for entry in result["result"]["ranked"]:
+        assert "buildability" in entry
+
+
+def test_compare_airports_includes_buildability_flag(fixture_conn):
+    result = call_tool("compare_airports", {"codes": ["BOS", "TST"]}, conn=fixture_conn)
+    for entry in result["result"]["compared"]:
+        assert "buildability" in entry
+
+
+def test_list_region_airports_runs_and_is_json_serializable(fixture_conn):
+    result = call_tool("list_region_airports", {"region_or_states": {"region": "new_england"}}, conn=fixture_conn)
+    assert "error" not in result
+    assert set(result) == {"result", "method", "caveats", "source", "confidence"}
+    json.dumps(result)
+
+
+def test_list_region_airports_by_states(fixture_conn):
+    result = call_tool("list_region_airports", {"region_or_states": {"states": ["MA"]}}, conn=fixture_conn)
+    assert "error" not in result
+    json.dumps(result)
+
+
+def test_get_airport_traffic_runs_and_is_json_serializable(fixture_conn):
+    result = call_tool("get_airport_traffic", {"code": "BOS"}, conn=fixture_conn)
+    assert "error" not in result
+    assert set(result) == {"result", "method", "caveats", "source", "confidence"}
+    json.dumps(result)
+
+
+def test_get_airport_traffic_unknown_airport_never_raises(fixture_conn):
+    result = call_tool("get_airport_traffic", {"code": "XYZ"}, conn=fixture_conn)
+    assert result["error"]["type"] == "AirportNotFoundError"
+
+
+def test_compare_congestion_runs_and_is_json_serializable(fixture_conn):
+    result = call_tool("compare_congestion", {"codes": ["BOS", "TST"]}, conn=fixture_conn)
+    assert "error" not in result
+    assert set(result) == {"result", "method", "caveats", "source", "confidence"}
+    json.dumps(result)
+
+
+def test_compare_congestion_low_coverage_is_never_hidden(fixture_conn):
+    result = call_tool("compare_congestion", {"codes": ["TST"]}, conn=fixture_conn)
+    entry = result["result"]["compared"][0]
+    assert "low_coverage" in entry
+    if entry["coverage_pct"] is None or entry["coverage_pct"] < 50.0:
+        assert entry["low_coverage"] is True
+        assert entry["flights"] is not None or entry["delayed_share_pct"] is None
+
+
+def test_compare_congestion_unknown_airport_never_raises(fixture_conn):
+    result = call_tool("compare_congestion", {"codes": ["BOS", "XYZ"]}, conn=fixture_conn)
+    assert result["error"]["type"] == "AirportNotFoundError"
+
+
+def test_get_buildability_runs_and_is_json_serializable(fixture_conn):
+    result = call_tool("get_buildability", {"code": "BOS"}, conn=fixture_conn)
+    assert "error" not in result
+    assert set(result) == {"result", "method", "caveats", "source", "confidence"}
+    json.dumps(result)
+
+
+def test_get_buildability_no_entry_says_no_constraints_on_file(fixture_conn):
+    result = call_tool("get_buildability", {"code": "BOS"}, conn=fixture_conn)
+    assert result["result"]["has_constraints"] is False
+    assert result["result"]["note"] == "no constraints on file"
+
+
+def test_get_buildability_unknown_airport_never_raises(fixture_conn):
+    result = call_tool("get_buildability", {"code": "XYZ"}, conn=fixture_conn)
+    assert result["error"]["type"] == "AirportNotFoundError"

@@ -15,8 +15,16 @@ crash the agent loop.
 
 import json
 
-from src.cache.accessors import AirportNotFoundError
+from src.cache.accessors import AirportNotFoundError, get_congestion_ttm, get_ttm_totals, validate_airport_code
+from src.cache.config import VOLUME_FLOOR_PAX
+from src.reference.buildability import get_buildability as _buildability_lookup
+from src.reference.envelope import envelope
+from src.reference.pax import pax_by_airport_ttm
+from src.reference.regions import list_new_england_airports_ttm, region_list
 from src.scoring.score import ScoringError, compare_airports, rank_airports, score_airport, sensitivity
+from src.scoring.signals import get_growth_ttm, get_load_factor_ttm
+
+_CONF_ORDER = {"low": 0, "medium": 1, "high": 2}
 
 SCOPE_SCHEMA = {
     "type": "object",
@@ -73,6 +81,95 @@ def _compare_airports(args, conn):
 
 def _sensitivity(args, conn):
     return sensitivity(args["scope"], conn=conn)
+
+
+def _list_region_airports(args, conn):
+    scope = args["region_or_states"]
+    if "region" in scope:
+        r = list_new_england_airports_ttm(conn)
+        basis = f"region:{scope['region']}"
+    else:
+        states = scope["states"]
+        pax_by_code, excluded, as_of = pax_by_airport_ttm(conn)
+        if as_of is None:
+            return envelope(None, "OurAirports intersected with TTM total_passengers", ["cache is empty"], "no cached data", "low")
+        r = region_list(
+            conn, pax_by_code, VOLUME_FLOOR_PAX,
+            f"TTM total_passengers ending {as_of} (excluded {excluded} NULL month-rows)", states=states,
+        )
+        basis = f"states:{states}"
+    if r["result"] is None:
+        return r
+    return envelope({"scope": basis, "airports": r["result"]}, r["method"], r["caveats"], r["source"], r["confidence"])
+
+
+def _get_airport_traffic(args, conn):
+    code = validate_airport_code(conn, args["code"])
+    ttm = get_ttm_totals(conn, code)
+    growth = get_growth_ttm(conn, code)
+    load_factor = get_load_factor_ttm(conn, code)
+
+    caveats = (
+        [f"ttm_totals: {c}" for c in ttm["caveats"]]
+        + [f"growth: {c}" for c in growth["caveats"]]
+        + [f"load_factor: {c}" for c in load_factor["caveats"]]
+    )
+    result = {
+        "airport": code,
+        "as_of": ttm["result"]["as_of"] if ttm["result"] else None,
+        "ttm_passengers": ttm["result"]["total_passengers"] if ttm["result"] else None,
+        "ttm_seats": ttm["result"]["total_seats"] if ttm["result"] else None,
+        "load_factor": load_factor["result"]["load_factor"] if load_factor["result"] else None,
+        "growth_pct": growth["result"]["growth_pct"] if growth["result"] else None,
+    }
+    sub_envelopes = [ttm, growth, load_factor]
+    sources = sorted({e["source"] for e in sub_envelopes if e["result"] is not None})
+    confidences = [e["confidence"] for e in sub_envelopes if e["result"] is not None]
+    confidence = min(confidences, key=lambda c: _CONF_ORDER[c]) if confidences else "low"
+    method = (
+        "TTM totals (src/cache/accessors.get_ttm_totals) + growth and load_factor "
+        "(src/scoring/signals.get_growth_ttm / get_load_factor_ttm) for one airport; thin wrapper, no new calculation"
+    )
+    return envelope(result, method, caveats, "; ".join(sources) if sources else "no cached data", confidence)
+
+
+def _compare_congestion(args, conn):
+    codes = [validate_airport_code(conn, c) for c in args["codes"]]
+    entries = []
+    sources = []
+    for code in codes:
+        cong = get_congestion_ttm(conn, code)
+        if cong["result"] is None:
+            entries.append({
+                "airport": code, "flights": None, "delayed_share_pct": None,
+                "coverage_pct": None, "low_coverage": True, "caveats": cong["caveats"],
+            })
+            continue
+        coverage = cong["result"]["coverage"]
+        coverage_pct = coverage["coverage_pct"] if coverage else None
+        entries.append({
+            "airport": code,
+            "flights": cong["result"]["flights"],
+            "delayed_share_pct": cong["result"]["pct_dep_delay_ge15min"],
+            "coverage_pct": coverage_pct,
+            "low_coverage": coverage_pct is None or coverage_pct < 50.0,
+            "caveats": cong["caveats"],
+        })
+        sources.append(cong["source"])
+    method = (
+        "TTM flights and %dep-delay>=15min per airport (src/cache/accessors.get_congestion_ttm), plus "
+        "OTP/T-100 coverage; coverage < 50% is returned with low_coverage=true, never hidden"
+    )
+    confidence = "medium" if any(e["low_coverage"] for e in entries) else "high"
+    return envelope(
+        {"codes": codes, "compared": entries}, method, [],
+        "; ".join(sorted(set(sources))) if sources else "no cached data", confidence,
+    )
+
+
+def _get_buildability(args, conn):
+    code = validate_airport_code(conn, args["code"])
+    return _buildability_lookup(code)
 
 
 TOOLS = {
@@ -146,6 +243,80 @@ TOOLS = {
             "additionalProperties": False,
         },
         "fn": _sensitivity,
+    },
+    "list_region_airports": {
+        "description": (
+            "List airports (code, name, state, TTM passengers) in a named region or a set of US states, "
+            "above the volume floor. Use to resolve 'which airports are in New England' or 'which airports "
+            "are in CT and ME' before asking about them individually. Does not score or rank them."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "region_or_states": {
+                    "type": "object",
+                    "description": "Exactly one of region/states.",
+                    "properties": {
+                        "region": {"type": "string", "enum": ["new_england"]},
+                        "states": {"type": "array", "items": {"type": "string"}, "description": "US state codes, e.g. ['CT', 'ME']."},
+                    },
+                    "additionalProperties": False,
+                },
+            },
+            "required": ["region_or_states"],
+            "additionalProperties": False,
+        },
+        "fn": _list_region_airports,
+    },
+    "get_airport_traffic": {
+        "description": (
+            "TTM passengers, seats, load factor, and passenger growth % for one airport, with its as_of "
+            "window. Use for raw traffic-volume questions, e.g. 'how many passengers does BOS carry?'. Do "
+            "NOT use for an investment score (use score_airport) or for congestion/delays (use compare_congestion)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "code": {"type": "string", "description": "IATA airport code, e.g. 'BOS'."},
+            },
+            "required": ["code"],
+            "additionalProperties": False,
+        },
+        "fn": _get_airport_traffic,
+    },
+    "compare_congestion": {
+        "description": (
+            "TTM flight counts and % of departures delayed >=15min for a list of named airports, plus the "
+            "OTP/T-100 coverage behind that delay share. If coverage is below 50% the number is still "
+            "returned, flagged with low_coverage=true -- never hidden. Use for 'is SFO more congested than "
+            "LAX?' style questions."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "codes": {"type": "array", "items": {"type": "string"}, "description": "IATA airport codes to compare."},
+            },
+            "required": ["codes"],
+            "additionalProperties": False,
+        },
+        "fn": _compare_congestion,
+    },
+    "get_buildability": {
+        "description": (
+            "Curated capacity/slot/perimeter constraints on file for one airport (data/reference/"
+            "buildability.json), with verified_by_user / needs_verification shown exactly as recorded. An "
+            "airport with no entry returns 'no constraints on file' -- that means not researched, NOT that "
+            "the airport is unconstrained."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "code": {"type": "string", "description": "IATA airport code, e.g. 'SNA'."},
+            },
+            "required": ["code"],
+            "additionalProperties": False,
+        },
+        "fn": _get_buildability,
     },
 }
 
