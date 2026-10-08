@@ -16,8 +16,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.cache import db
 from src.scoring.normalize import MIN_PEER_GROUP_SIZE, Z_CLIP, robust_z_scores
 from src.scoring.score import _resolve_scope, compare_airports, rank_airports, score_airport, sensitivity
-from src.scoring.signals import compute_signals, get_congestion_signal_ttm
+from src.scoring.signals import compute_signals, eligible_universe_ttm, get_congestion_signal_ttm, get_peer_group_ttm
 from src.scoring.weights import SENSITIVITY_WEIGHT_SETS
+from src.reference.hub_tiers import compute_hub_tiers, compute_hub_tiers_ttm
 
 ENVELOPE_KEYS = {"result", "method", "caveats", "source", "confidence"}
 
@@ -388,3 +389,40 @@ def test_new_england_scope_and_anc_congestion_real_cache(real_conn):
     assert congestion["raw"] is None
     assert congestion["z"] is None
     assert any("low OTP coverage" in c for c in congestion["caveats"])
+
+
+# --- micro tier: every volume-floor-eligible airport must get a peer group --
+
+def test_cy2024_hub_tiers_unchanged_no_micro_key(real_conn):
+    """The CY2024-pinned baseline (compute_hub_tiers) must be untouched: no 'micro' key, same 31/34/76."""
+    cy = compute_hub_tiers(real_conn)
+    assert "micro" not in cy["result"]["tiers"]
+    assert "micro" not in cy["result"]["counts"]
+    assert cy["result"]["counts"] == {"large": 31, "medium": 34, "small": 76}
+
+
+def test_ttm_tier_sizes_sum_to_eligible_count_real_cache(real_conn):
+    """(golden) large + medium + small + micro must equal the volume-floor-eligible TTM universe, exactly."""
+    tiers = compute_hub_tiers_ttm(real_conn)
+    elig = eligible_universe_ttm(real_conn)
+    counts = tiers["result"]["counts"]
+    assert set(counts.keys()) == {"large", "medium", "small", "micro"}
+    assert sum(counts.values()) == elig["result"]["count"]
+
+
+def test_every_new_england_airport_has_a_ttm_tier_real_cache(real_conn):
+    """(golden) Every one of the 10 New England airports -- including the small ones below the small-tier threshold -- must land in some tier."""
+    expected = {"BOS", "BDL", "PVD", "PWM", "BTV", "MHT", "HVN", "BGR", "ORH", "ACK"}
+    tiers = compute_hub_tiers_ttm(real_conn)
+    tier_by_code = {m["code"]: t for t, members in tiers["result"]["tiers"].items() for m in members}
+    missing = expected - set(tier_by_code)
+    assert not missing, f"airports with no TTM tier at all: {missing}"
+    for code in expected:
+        r = get_peer_group_ttm(real_conn, code)
+        assert r["result"] is not None, f"{code} has no peer group"
+
+
+def test_micro_tier_peer_group_at_least_five_real_cache(real_conn):
+    """(golden) The micro tier itself must be a usable peer group (src/scoring/normalize.MIN_PEER_GROUP_SIZE)."""
+    tiers = compute_hub_tiers_ttm(real_conn)
+    assert len(tiers["result"]["tiers"]["micro"]) >= MIN_PEER_GROUP_SIZE

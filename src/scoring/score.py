@@ -237,7 +237,7 @@ def _score_one(code, entry, weights):
 def score_airport(code, weights=None, conn=None, end_month=None):
     """
     Score one airport against its TTM hub-tier peer group (large/medium/
-    small, see src/scoring/signals.get_peer_group_ttm). Falls back to a
+    small/micro, see src/scoring/signals.get_peer_group_ttm). Falls back to a
     peer group of just itself (and therefore "insufficient data", peer group
     too small) if it isn't classified into any TTM hub tier.
     """
@@ -267,7 +267,7 @@ def score_airport(code, weights=None, conn=None, end_month=None):
 
 def _resolve_scope(conn, scope, end_month):
     """
-    scope: {"region": "new_england"} | {"tier": "large"|"medium"|"small"} |
+    scope: {"region": "new_england"} | {"tier": "large"|"medium"|"small"|"micro"} |
     {"states": ["CT", "ME", ...]}. Returns (codes, basis_label, caveats, source).
     """
     from src.cache.config import VOLUME_FLOOR_PAX
@@ -288,8 +288,8 @@ def _resolve_scope(conn, scope, end_month):
         return [a["code"] for a in r["result"]], f"region:{value}", r["caveats"], r["source"]
 
     if kind == "tier":
-        if value not in ("large", "medium", "small"):
-            raise ScoringError(f"tier must be 'large'/'medium'/'small', got {value!r}")
+        if value not in ("large", "medium", "small", "micro"):
+            raise ScoringError(f"tier must be 'large'/'medium'/'small'/'micro', got {value!r}")
         r = compute_hub_tiers_ttm(conn, end_month)
         if r["result"] is None:
             return [], f"tier:{value}", r["caveats"], r["source"]

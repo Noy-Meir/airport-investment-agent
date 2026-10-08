@@ -64,14 +64,17 @@ constraint silently lower its number.
 ## Peer groups
 
 **An airport's peer group is always its own TTM hub tier**
-(large/medium/small, `src/scoring/signals.get_peer_group_ttm`), computed
-once per tier and shared by every airport in it
-(`src/scoring/score._tiered_group_data`). An airport that isn't classified
-into any TTM tier (too small a national share even for the "small"
-threshold) falls back to a peer group of itself only, which is below
-`MIN_PEER_GROUP_SIZE` and therefore scores `"insufficient data"` -- this is
-real, not a display artifact: ACK/BGR/ORH (New England, below the small-tier
-threshold) genuinely have no statistically meaningful peer group yet.
+(large/medium/small/micro, `src/scoring/signals.get_peer_group_ttm`),
+computed once per tier and shared by every airport in it
+(`src/scoring/score._tiered_group_data`).
+
+Hub tiers are share-of-national-passengers buckets (see "Hub tiers" /
+"Micro tier" below), so by construction every tier except the smallest has
+>= `MIN_PEER_GROUP_SIZE` members. An airport only falls back to a peer group
+of itself (and therefore `"insufficient data"`) if it's below
+`VOLUME_FLOOR_PAX` entirely -- i.e. not eligible for scoring at all, not
+merely small. Every volume-floor-eligible airport has a real, >= 5-member
+peer group.
 
 `score_airport`, `rank_airports`, `compare_airports` and `sensitivity` all
 share this rule -- none of them ever use their own `codes`/`scope` argument
@@ -80,11 +83,11 @@ as the peer group:
 - `score_airport(code)`: scores `code` against its own tier.
 - `rank_airports(scope)` / `sensitivity(scope)`: `scope` only *selects which
   airports to display/rank* (`{"region": "new_england"}`,
-  `{"tier": "large"|"medium"|"small"}`, or `{"states": [...]}`). Each airport
-  in `scope` is still scored against its own tier, which may differ airport
-  to airport -- a New England ranking mixes a large-tier airport (BOS) with
-  medium- and small-tier ones side by side, each scored against its real
-  peers.
+  `{"tier": "large"|"medium"|"small"|"micro"}`, or `{"states": [...]}`).
+  Each airport in `scope` is still scored against its own tier, which may
+  differ airport to airport -- a New England ranking mixes a large-tier
+  airport (BOS) with medium/small/micro-tier ones side by side, each scored
+  against its real peers.
 - `compare_airports(codes)`: same thing -- `codes` only picks which airports
   to display side by side. Comparing a large-tier and a medium-tier airport
   (e.g. SFO/LAX vs. SNA) does not shrink either one's peer group to the size
@@ -93,6 +96,21 @@ as the peer group:
   which of the four entry points computed them -- enforced by
   `test_z_score_identical_alone_in_compare_and_in_rank` in
   `tests/test_scoring.py`.
+
+### Micro tier
+
+`src/reference/hub_tiers.compute_hub_tiers_ttm` adds a 4th, TTM-only tier:
+**micro** = volume-floor-eligible (TTM total_passengers >= `VOLUME_FLOOR_PAX`)
+but below every large/medium/small share threshold. Without it, an airport
+like ACK/BGR/ORH (real New England airports above the volume floor but too
+small a national share for "small") had no tier at all, fell back to a
+1-member peer group, and came back `"insufficient data"` even though the
+user explicitly asked about it (e.g. a New England ranking) -- an unscored
+airport inside the user's requested scope is a worse answer than a scored
+one with its peer group honestly stated as "micro". The CY2024-pinned
+`compute_hub_tiers` (golden-test baseline) is unchanged -- it never computes
+a micro tier, so `data/reference/hub_tiers.json` and the 31/34/76 golden
+test stay exactly as they were.
 
 ## Confidence rules
 
@@ -123,8 +141,9 @@ All four functions return the uniform envelope (`src/reference/envelope.py`):
   -- ranks every airport in `scope`, highest composite first; airports with
   insufficient data are listed last with `rank=None`.
 - `compare_airports(codes, weights=None, conn=None, end_month=None)` --
-  same per-airport shape as `score_airport`, side by side, peer group =
-  exactly the given codes.
+  same per-airport shape as `score_airport`, side by side; `codes` only
+  selects which airports to display, each is scored against its own tier
+  (see "Peer groups" above).
 - `sensitivity(scope, weight_sets=None, conn=None, end_month=None)` --
   re-ranks `scope` under every named weight set (default:
   `src/scoring/weights.SENSITIVITY_WEIGHT_SETS` -- `hypotheses` + the 4
@@ -148,6 +167,11 @@ existing connection to reuse one (e.g. in tests, against a fixture db).
 - "why" list ordering by `|contribution|` descending (not signed
   contribution, not raw z) -- picked so the most *impactful* signal leads
   regardless of whether it pushed the score up or down.
+- Micro tier's floor is `VOLUME_FLOOR_PAX` (the existing scoring-eligibility
+  floor, 100,000 TTM passengers) -- not a new, separately-tuned threshold.
+  Chosen so "has a tier" and "is eligible to be scored at all" are the same
+  condition; a micro tier with its own arbitrary floor would just move the
+  same gap to a different boundary.
 - `MIN_SIGNALS_FOR_SCORE = 3` zero-weight edge case: if the >=3 available
   signals happen to carry zero total weight under a given weight set (e.g.
   `DROP_CONGESTION` when congestion is the only non-missing signal with

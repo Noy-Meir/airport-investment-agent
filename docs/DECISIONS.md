@@ -118,6 +118,22 @@ Based on share of national total passengers, CY2024 (national total =
 - Medium >= 0.25%: 34 airports.
 - Small >= 0.05%: 76 airports.
 
+### Micro tier (TTM production only, not part of the CY2024 baseline)
+`compute_hub_tiers_ttm` (`src/reference/hub_tiers.py`) adds a 4th tier,
+**micro**: TTM-eligible (total_passengers >= `VOLUME_FLOOR_PAX`) airports
+that don't meet any large/medium/small share threshold. Added for scoring
+(`src/scoring/signals.get_peer_group_ttm`): before this, a volume-floor-
+eligible airport with too small a national share (e.g. ACK, BGR, ORH in New
+England) had no tier at all, fell back to a 1-member peer group, and scored
+`"insufficient data"` even inside a scope the user explicitly asked about
+(e.g. a New England ranking) -- an unscored airport in the requested scope
+is a worse answer than a scored one with its peer group honestly stated.
+Real-cache snapshot (TTM ending 2026-04): large 30, medium 35, small 80,
+micro 89 -- sums exactly to the 234-airport eligible universe. The
+CY2024-pinned `compute_hub_tiers` (golden-test baseline,
+`data/reference/hub_tiers.json`, the 31/34/76 test) is unchanged -- it never
+computes a micro tier.
+
 ## New England airports above floor (10)
 BOS, BDL, PVD, PWM, BTV, MHT, HVN, BGR, ORH, ACK.
 Region lists must be built in code from OurAirports `iso_region`

@@ -238,9 +238,9 @@ def eligible_universe_ttm(conn, end_month=None, volume_floor=VOLUME_FLOOR_PAX):
 
 
 def get_peer_group_ttm(conn, code, end_month=None):
-    """Peer group for `code` = its TTM hub tier (large/medium/small) membership."""
+    """Peer group for `code` = its TTM hub tier (large/medium/small/micro) membership."""
     airport_code = validate_airport_code(conn, code)
-    method = "TTM hub tier (large/medium/small) membership"
+    method = "TTM hub tier (large/medium/small/micro) membership"
     tiers = compute_hub_tiers_ttm(conn, end_month)
     if tiers["result"] is None:
         return envelope(None, method, tiers["caveats"], tiers["source"], "low")
