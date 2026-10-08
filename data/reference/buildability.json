@@ -1,5 +1,5 @@
 {
-  "_note": "Curated by hand, not pulled from an API -- every fact below must have a source_url or be explicitly flagged needs_verification. Not refreshed by scripts/build_cache.py. Restructured into one entry per constraint (type/value/unit/effective_until/source_url/verified_by_user); no numbers or claims were changed from the prior flat-text version, only split out field-by-field. Full original prose kept verbatim in each entry's `notes`.",
+  "_note": "Curated by hand, not pulled from an API -- every fact below must have a source_url or be explicitly flagged needs_verification. Not refreshed by scripts/build_cache.py. One entry per constraint (type/value/unit/effective_until/source_url/verified_by_user/needs_verification/notes); per-constraint notes are kept only where they add something specific to that constraint.",
   "_as_of": "2026-10-08",
   "airports": {
     "SNA": {
@@ -8,22 +8,22 @@
         {
           "type": "cap",
           "value": 95,
-          "unit": "average daily departures (ADDs), up from 85",
+          "unit": "Class A average daily departures (ADDs), passenger service; 1 ADD = 365 departures/yr",
           "effective_until": "2030-12-31",
           "source_url": "https://www.ocair.com/about/administration/settlement-agreement/key-provisions-settlement-agreement/",
           "verified_by_user": true,
-          "needs_verification": "exact phase-in year for each ADD/MAP step; confirm against the current OCAIR capacity-allocation staff report for the active plan year",
-          "notes": "Settlement Agreement caps: Average Daily Departures and annual Million Annual Passengers (MAP) are fixed by a 1985 settlement agreement (as renegotiated in 2014/2020), not by physical capacity. ADDs rise from 85 to 95 and the MAP cap rises from 10.8M to 12.5M on a phased schedule running through the agreement's expiration in 2030-2035 (curfew to 2035)."
+          "needs_verification": null,
+          "notes": "2014 Amendments: max 85 Class A ADDs through 2020, 95 through 2030. 4 Class A ADDs are designated for priority allocation to all-cargo service; two of these may be allocated to passenger service."
         },
         {
           "type": "cap",
-          "value": 12.5,
-          "unit": "million annual passengers (MAP), up from 10.8",
+          "value": 12.2,
+          "unit": "million annual passengers (MAP), 2026-2030 base cap",
           "effective_until": "2030-12-31",
           "source_url": "https://www.ocair.com/about/administration/settlement-agreement/key-provisions-settlement-agreement/",
           "verified_by_user": true,
-          "needs_verification": "exact phase-in year for each ADD/MAP step; confirm against the current OCAIR capacity-allocation staff report for the active plan year",
-          "notes": "Settlement Agreement caps: Average Daily Departures and annual Million Annual Passengers (MAP) are fixed by a 1985 settlement agreement (as renegotiated in 2014/2020), not by physical capacity. ADDs rise from 85 to 95 and the MAP cap rises from 10.8M to 12.5M on a phased schedule running through the agreement's expiration in 2030-2035 (curfew to 2035)."
+          "needs_verification": "whether 11.21 MAP was served in 2021-2025 and mitigation measures met (then the cap is 12.5 instead of 12.2)",
+          "notes": "Phase 3 (2026-2030): 12.2 MAP, or 12.5 MAP if 11.21 MAP was served between 2021-01-01 and 2025-12-31 and certain mitigation measures are met. Earlier: 10.8 MAP through 2020, 11.8 MAP through 2025. Agreement amended in 2003 and 2014; the earlier claim of a 2020 amendment and a curfew to 2035 is not supported by the source page and was removed."
         }
       ]
     },

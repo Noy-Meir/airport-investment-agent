@@ -9,6 +9,7 @@ string longer than necessary; never printed to the console.
 import csv
 import io
 import logging
+import socket
 import urllib.error
 import urllib.request
 from collections import defaultdict
@@ -30,7 +31,7 @@ def _fetch_csv_text():
     try:
         with urllib.request.urlopen(req, timeout=TIMEOUT_SECONDS) as resp:
             return resp.read().decode("utf-8", errors="replace")
-    except urllib.error.URLError as e:
+    except (urllib.error.URLError, TimeoutError, socket.timeout) as e:
         raise OurAirportsError(f"request failed: {e}") from e
 
 

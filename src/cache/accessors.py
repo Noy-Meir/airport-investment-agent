@@ -66,6 +66,13 @@ def _sum_excluding_null(rows, field):
     return (sum(present) if present else None), excluded
 
 
+def _ratio(num, denom, mult=1.0, digits=2):
+    """num/denom*mult, rounded -- None (not 0) if denom is falsy or num is None, never imputing a missing numerator as 0."""
+    if not denom or num is None:
+        return None
+    return round(mult * num / denom, digits)
+
+
 def validate_airport_code(conn, code):
     """
     Raises AirportNotFoundError with a clear message if `code` is not a
@@ -152,28 +159,37 @@ def get_long_haul_share(conn, origin, year, thresholds=LONG_HAUL_THRESHOLDS_MI, 
             "no cached data", "low",
         )
 
+    source_stamp = _source_stamp(rows[0]["source"], rows[0]["fetched_at"])
+    null_dep_rows = [r for r in rows if r["departures_performed"] is None]
+    rows = [r for r in rows if r["departures_performed"] is not None]
+
     missing_rows = [r for r in rows if r["distance"] is None]
     zero_error_rows = [r for r in rows if r["distance"] is not None and r["distance"] == 0 and r["dest"] != code]
     valid_rows = [
         r for r in rows
         if r["distance"] is not None and (r["distance"] != 0 or r["dest"] == code)
     ]
-    missing_departures = sum((r["departures_performed"] or 0) for r in missing_rows)
-    zero_error_departures = sum((r["departures_performed"] or 0) for r in zero_error_rows)
+    missing_departures = sum(r["departures_performed"] for r in missing_rows)
+    zero_error_departures = sum(r["departures_performed"] for r in zero_error_rows)
     same_airport_zero_departures = sum(
-        (r["departures_performed"] or 0) for r in valid_rows if r["distance"] == 0
+        r["departures_performed"] for r in valid_rows if r["distance"] == 0
     )
 
-    total = sum((r["departures_performed"] or 0) for r in valid_rows)
+    total = sum(r["departures_performed"] for r in valid_rows)
     result = {}
     for thr in thresholds:
         if total == 0:
             result[thr] = None
             continue
-        long_deps = sum((r["departures_performed"] or 0) for r in valid_rows if r["distance"] >= thr)
+        long_deps = sum(r["departures_performed"] for r in valid_rows if r["distance"] >= thr)
         result[thr] = round(100.0 * long_deps / total, 1)
 
     caveats = [f"class_group={class_group} ({sorted(CLASS_GROUPS[class_group])}), weighted by DEPARTURES_PERFORMED"]
+    if null_dep_rows:
+        caveats.append(
+            f"excluded {len(null_dep_rows)} (origin,dest,carrier) combo(s) with missing DEPARTURES_PERFORMED "
+            "from both numerator and denominator"
+        )
     if missing_rows:
         caveats.append(
             f"excluded {len(missing_rows)} (origin,dest,carrier) combo(s) with missing DISTANCE, "
@@ -193,7 +209,7 @@ def get_long_haul_share(conn, origin, year, thresholds=LONG_HAUL_THRESHOLDS_MI, 
     return _envelope(
         {"shares_pct": result, "total_departures": total},
         "route-level T-100 (source B), departures-weighted share by DISTANCE threshold",
-        caveats, _source_stamp(rows[0]["source"], rows[0]["fetched_at"]), "high",
+        caveats, source_stamp, "high",
     )
 
 
@@ -470,6 +486,9 @@ def get_congestion_ttm(conn, code, end_month=None):
     as a % of T-100 (source A) domestic_departures, summed over the months
     where BOTH datasets have a cached row for this airport (the overlap),
     naming those months explicitly -- not assumed to be the full window.
+    T-100 domestic_departures includes freighters and carriers that do not
+    report to OTP, so this coverage ratio understates how much *passenger*
+    traffic OTP actually covers -- see docs/DECISIONS.md.
     """
     airport_code = validate_airport_code(conn, code)
     method = (
@@ -507,20 +526,28 @@ def get_congestion_ttm(conn, code, end_month=None):
             "no cached data", "low",
         )
 
-    sums = {f: sum(r[f] or 0 for r in rows) for f in OTP_SUM_FIELDS}
+    sums = {}
+    null_field_caveats = []
+    for f in OTP_SUM_FIELDS:
+        total, excluded = _sum_excluding_null(rows, f)
+        sums[f] = total
+        if excluded:
+            null_field_caveats.append(f"{f}: excluded {excluded}/{len(rows)} month(s) with NULL value from the sum")
+
     result = {
         "months_present": len(rows), "as_of": as_of, "window_start": window_start,
         "flights": sums["n_flights"],
-        "cancellation_rate_pct": round(100.0 * sums["n_cancelled"] / sums["n_flights"], 2) if sums["n_flights"] else None,
-        "mean_taxi_out_min": round(sums["sum_taxi_out"] / sums["n_taxi_out_obs"], 2) if sums["n_taxi_out_obs"] else None,
-        "mean_dep_delay_min": round(sums["sum_dep_delay_min"] / sums["n_dep_delay_obs"], 2) if sums["n_dep_delay_obs"] else None,
-        "pct_dep_delay_ge15min": round(100.0 * sums["n_dep_del15"] / sums["n_dep_delay_obs"], 2) if sums["n_dep_delay_obs"] else None,
+        "cancellation_rate_pct": _ratio(sums["n_cancelled"], sums["n_flights"], 100.0),
+        "mean_taxi_out_min": _ratio(sums["sum_taxi_out"], sums["n_taxi_out_obs"]),
+        "mean_dep_delay_min": _ratio(sums["sum_dep_delay_min"], sums["n_dep_delay_obs"]),
+        "pct_dep_delay_ge15min": _ratio(sums["n_dep_del15"], sums["n_dep_delay_obs"], 100.0),
     }
 
     caveats = [
         "OTP covers domestic reporting carriers only -- no freighters, no international flights",
         f"trailing 12 months ending {as_of} (latest month cached for any airport)" if end_month is None
         else f"trailing 12 months ending {as_of}",
+        *null_field_caveats,
     ]
     if len(rows) < 12:
         caveats.append(f"only {len(rows)}/12 months of OTP cached in this window")
@@ -542,6 +569,10 @@ def _otp_t100_coverage(conn, code, window):
     row (with non-NULL domestic_departures) exist for `code`. Returns
     {"result": {...}|None, "caveats": [...]} -- not a full envelope, meant to
     be folded into get_congestion_ttm's envelope.
+
+    T-100 domestic_departures includes freighters and carriers that do not
+    report to OTP, so this ratio understates how much passenger traffic OTP
+    actually covers -- see docs/DECISIONS.md.
     """
     ym_values = [y * 100 + m for y, m in window]
     placeholders = ",".join("?" for _ in ym_values)
@@ -580,6 +611,9 @@ def _otp_t100_coverage(conn, code, window):
         "caveats": [
             f"coverage computed over {len(overlap_months)} overlapping month(s) only: {months_label}, "
             "not the full 12-month window",
+            "coverage = OTP flights / T-100 domestic_departures; T-100 domestic_departures includes "
+            "freighters and carriers that do not report to OTP, so this ratio understates how much "
+            "passenger traffic OTP actually covers",
         ],
     }
 

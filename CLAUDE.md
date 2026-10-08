@@ -3,6 +3,8 @@
 Deloitte FDE take-home. Agent that answers airport-investment questions using
 real BTS/FAA/OurAirports data.
 
+Python 3.12 recommended (>=3.10 required).
+
 ## Architecture
 
 - The LLM only **selects tools and narrates results**. It never computes or

@@ -9,13 +9,21 @@ Each month is ~30-35MB; a trailing-12-month pull is ~400MB total -- per
 CLAUDE.md's cost rules, ask the user before running the real download.
 
 CLI:
-    python -m src.clients.otp <start_year> <start_month> <end_year> <end_month>
-    python -m src.clients.otp              # defaults to the 12 months ending
+    python -m src.clients.otp <start_year> <start_month> <end_year> <end_month> [--force]
+    python -m src.clients.otp [--force]    # defaults to the 12 months ending
                                             # at the latest month available
                                             # upstream (found via HEAD probes)
+    --force re-downloads a month even if a valid ZIP already exists on disk.
 
-Saves data/raw/otp_<year>_<month>.zip (gitignored). Never loads the ZIP/CSV
-into memory here -- that's src/cache/otp_aggregate.py's job.
+Saves data/raw/otp_<year>_<month>.zip (gitignored). Does read each monthly
+ZIP (~30-35MB) fully into memory here (see `_attempt_download`) before
+writing it to disk -- it does NOT load the decoded CSV inside the ZIP into
+memory; that's src/cache/otp_aggregate.py's job.
+
+`download_month` skips a month whose ZIP already exists on disk and looks
+valid (starts with a PK header and is > 1MB), logging "skipped (exists)".
+Pass --force on the CLI (or force=True to `download_month`) to re-download
+anyway.
 """
 
 import datetime
@@ -138,10 +146,30 @@ def _attempt_download(year, month):
     return content
 
 
-def download_month(year, month, raw_dir=RAW_DIR):
-    """Download one month's OTP ZIP. Returns the saved path."""
+MIN_VALID_ZIP_BYTES = 1_000_000
+
+
+def _is_valid_existing_zip(path):
+    if not os.path.exists(path):
+        return False
+    if os.path.getsize(path) <= MIN_VALID_ZIP_BYTES:
+        return False
+    with open(path, "rb") as f:
+        return f.read(2) == b"PK"
+
+
+def download_month(year, month, raw_dir=RAW_DIR, force=False):
+    """
+    Download one month's OTP ZIP. Returns the saved path. Unless `force` is
+    True, skips (and logs "skipped (exists)") if `dest_path` already exists
+    and looks like a valid ZIP (PK header, size > 1MB).
+    """
     os.makedirs(raw_dir, exist_ok=True)
     dest_path = os.path.join(raw_dir, f"otp_{year}_{month:02d}.zip")
+
+    if not force and _is_valid_existing_zip(dest_path):
+        logger.info("year=%s month=%s skipped (exists): %s", year, month, dest_path)
+        return dest_path
 
     last_error = None
     for attempt in range(1, MAX_ATTEMPTS + 1):
@@ -166,6 +194,9 @@ def download_month(year, month, raw_dir=RAW_DIR):
 def main(argv):
     log_path = _configure_logging()
 
+    force = "--force" in argv
+    argv = [a for a in argv if a != "--force"]
+
     if not argv:
         start_year, start_month, end_year, end_month = default_window()
     elif len(argv) == 4:
@@ -176,7 +207,7 @@ def main(argv):
             return 2
     else:
         print(
-            "usage: python -m src.clients.otp [<start_year> <start_month> <end_year> <end_month>]",
+            "usage: python -m src.clients.otp [<start_year> <start_month> <end_year> <end_month>] [--force]",
             file=sys.stderr,
         )
         return 2
@@ -187,7 +218,7 @@ def main(argv):
     results = []
     for year, month in months:
         try:
-            path = download_month(year, month)
+            path = download_month(year, month, force=force)
             size = os.path.getsize(path)
             results.append(f"  {year}-{month:02d}: OK -> {path} ({size:,} bytes)")
         except OTPDownloadError as e:
