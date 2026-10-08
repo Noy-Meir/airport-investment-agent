@@ -1,0 +1,72 @@
+{
+  "new_england": {
+    "result": [
+      {
+        "code": "ACK",
+        "name": "Nantucket Memorial Airport",
+        "state": "MA",
+        "passengers": 152059.0
+      },
+      {
+        "code": "BDL",
+        "name": "Bradley International Airport",
+        "state": "CT",
+        "passengers": 3299417.0
+      },
+      {
+        "code": "BGR",
+        "name": "Bangor International Airport",
+        "state": "ME",
+        "passengers": 374488.0
+      },
+      {
+        "code": "BOS",
+        "name": "Boston Logan International Airport",
+        "state": "MA",
+        "passengers": 21280480.0
+      },
+      {
+        "code": "BTV",
+        "name": "Patrick Leahy Burlington International Airport",
+        "state": "VT",
+        "passengers": 670834.0
+      },
+      {
+        "code": "HVN",
+        "name": "Tweed New Haven Airport",
+        "state": "CT",
+        "passengers": 589274.0
+      },
+      {
+        "code": "MHT",
+        "name": "Manchester-Boston Regional Airport",
+        "state": "NH",
+        "passengers": 634256.0
+      },
+      {
+        "code": "ORH",
+        "name": "Worcester Regional Airport",
+        "state": "MA",
+        "passengers": 112848.0
+      },
+      {
+        "code": "PVD",
+        "name": "Rhode Island T. F. Green International Airport",
+        "state": "RI",
+        "passengers": 1990715.0
+      },
+      {
+        "code": "PWM",
+        "name": "Portland International Jetport",
+        "state": "ME",
+        "passengers": 1222400.0
+      }
+    ],
+    "method": "OurAirports iso_region in ['CT', 'ME', 'MA', 'NH', 'RI', 'VT'] intersected with CY2024 total_passengers (excluded 0 NULL month-rows) >= 100,000",
+    "caveats": [
+      "volume floor 100,000 is provisional pending trailing-12-month confirmation (see docs/DECISIONS.md)"
+    ],
+    "source": "OurAirports airports.csv, cached 2026-10-08T15:37:09Z + CY2024 total_passengers (excluded 0 NULL month-rows)",
+    "confidence": "medium"
+  }
+}

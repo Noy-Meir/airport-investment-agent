@@ -1,0 +1,727 @@
+{
+  "result": {
+    "national_total_passengers": 988696980.0,
+    "tiers": {
+      "large": [
+        {
+          "code": "ATL",
+          "passengers": 52616638.0,
+          "share_pct": 5.3218
+        },
+        {
+          "code": "DFW",
+          "passengers": 42453849.0,
+          "share_pct": 4.2939
+        },
+        {
+          "code": "DEN",
+          "passengers": 40188649.0,
+          "share_pct": 4.0648
+        },
+        {
+          "code": "ORD",
+          "passengers": 38738073.0,
+          "share_pct": 3.9181
+        },
+        {
+          "code": "LAX",
+          "passengers": 38240898.0,
+          "share_pct": 3.8678
+        },
+        {
+          "code": "JFK",
+          "passengers": 31490220.0,
+          "share_pct": 3.185
+        },
+        {
+          "code": "CLT",
+          "passengers": 28578447.0,
+          "share_pct": 2.8905
+        },
+        {
+          "code": "LAS",
+          "passengers": 28336523.0,
+          "share_pct": 2.866
+        },
+        {
+          "code": "MCO",
+          "passengers": 27950273.0,
+          "share_pct": 2.827
+        },
+        {
+          "code": "MIA",
+          "passengers": 26762659.0,
+          "share_pct": 2.7069
+        },
+        {
+          "code": "PHX",
+          "passengers": 25739503.0,
+          "share_pct": 2.6034
+        },
+        {
+          "code": "SEA",
+          "passengers": 25467226.0,
+          "share_pct": 2.5758
+        },
+        {
+          "code": "SFO",
+          "passengers": 25301322.0,
+          "share_pct": 2.5591
+        },
+        {
+          "code": "EWR",
+          "passengers": 24583182.0,
+          "share_pct": 2.4864
+        },
+        {
+          "code": "IAH",
+          "passengers": 23482509.0,
+          "share_pct": 2.3751
+        },
+        {
+          "code": "BOS",
+          "passengers": 21280480.0,
+          "share_pct": 2.1524
+        },
+        {
+          "code": "MSP",
+          "passengers": 18069914.0,
+          "share_pct": 1.8276
+        },
+        {
+          "code": "FLL",
+          "passengers": 17126317.0,
+          "share_pct": 1.7322
+        },
+        {
+          "code": "LGA",
+          "passengers": 16716210.0,
+          "share_pct": 1.6907
+        },
+        {
+          "code": "DTW",
+          "passengers": 16136934.0,
+          "share_pct": 1.6321
+        },
+        {
+          "code": "PHL",
+          "passengers": 15138297.0,
+          "share_pct": 1.5311
+        },
+        {
+          "code": "SLC",
+          "passengers": 13569649.0,
+          "share_pct": 1.3725
+        },
+        {
+          "code": "BWI",
+          "passengers": 13301275.0,
+          "share_pct": 1.3453
+        },
+        {
+          "code": "IAD",
+          "passengers": 13211080.0,
+          "share_pct": 1.3362
+        },
+        {
+          "code": "SAN",
+          "passengers": 12886359.0,
+          "share_pct": 1.3034
+        },
+        {
+          "code": "DCA",
+          "passengers": 12763040.0,
+          "share_pct": 1.2909
+        },
+        {
+          "code": "TPA",
+          "passengers": 12138071.0,
+          "share_pct": 1.2277
+        },
+        {
+          "code": "BNA",
+          "passengers": 12133680.0,
+          "share_pct": 1.2272
+        },
+        {
+          "code": "AUS",
+          "passengers": 10805633.0,
+          "share_pct": 1.0929
+        },
+        {
+          "code": "HNL",
+          "passengers": 10528934.0,
+          "share_pct": 1.0649
+        },
+        {
+          "code": "MDW",
+          "passengers": 10480890.0,
+          "share_pct": 1.0601
+        }
+      ],
+      "medium": [
+        {
+          "code": "DAL",
+          "passengers": 8806649.0,
+          "share_pct": 0.8907
+        },
+        {
+          "code": "PDX",
+          "passengers": 8652887.0,
+          "share_pct": 0.8752
+        },
+        {
+          "code": "STL",
+          "passengers": 7874704.0,
+          "share_pct": 0.7965
+        },
+        {
+          "code": "RDU",
+          "passengers": 7629551.0,
+          "share_pct": 0.7717
+        },
+        {
+          "code": "HOU",
+          "passengers": 7189168.0,
+          "share_pct": 0.7271
+        },
+        {
+          "code": "SMF",
+          "passengers": 6713196.0,
+          "share_pct": 0.679
+        },
+        {
+          "code": "MSY",
+          "passengers": 6593482.0,
+          "share_pct": 0.6669
+        },
+        {
+          "code": "SJU",
+          "passengers": 6479732.0,
+          "share_pct": 0.6554
+        },
+        {
+          "code": "MCI",
+          "passengers": 5994616.0,
+          "share_pct": 0.6063
+        },
+        {
+          "code": "SJC",
+          "passengers": 5865922.0,
+          "share_pct": 0.5933
+        },
+        {
+          "code": "SAT",
+          "passengers": 5562448.0,
+          "share_pct": 0.5626
+        },
+        {
+          "code": "RSW",
+          "passengers": 5453153.0,
+          "share_pct": 0.5515
+        },
+        {
+          "code": "SNA",
+          "passengers": 5388351.0,
+          "share_pct": 0.545
+        },
+        {
+          "code": "OAK",
+          "passengers": 5347249.0,
+          "share_pct": 0.5408
+        },
+        {
+          "code": "IND",
+          "passengers": 5226264.0,
+          "share_pct": 0.5286
+        },
+        {
+          "code": "CLE",
+          "passengers": 4970643.0,
+          "share_pct": 0.5027
+        },
+        {
+          "code": "PIT",
+          "passengers": 4902379.0,
+          "share_pct": 0.4958
+        },
+        {
+          "code": "CVG",
+          "passengers": 4525368.0,
+          "share_pct": 0.4577
+        },
+        {
+          "code": "CMH",
+          "passengers": 4412184.0,
+          "share_pct": 0.4463
+        },
+        {
+          "code": "PBI",
+          "passengers": 4145000.0,
+          "share_pct": 0.4192
+        },
+        {
+          "code": "JAX",
+          "passengers": 3781161.0,
+          "share_pct": 0.3824
+        },
+        {
+          "code": "ONT",
+          "passengers": 3530729.0,
+          "share_pct": 0.3571
+        },
+        {
+          "code": "OGG",
+          "passengers": 3420398.0,
+          "share_pct": 0.346
+        },
+        {
+          "code": "BUR",
+          "passengers": 3395510.0,
+          "share_pct": 0.3434
+        },
+        {
+          "code": "BDL",
+          "passengers": 3299417.0,
+          "share_pct": 0.3337
+        },
+        {
+          "code": "CHS",
+          "passengers": 3147496.0,
+          "share_pct": 0.3183
+        },
+        {
+          "code": "MKE",
+          "passengers": 3104670.0,
+          "share_pct": 0.314
+        },
+        {
+          "code": "ANC",
+          "passengers": 2737514.0,
+          "share_pct": 0.2769
+        },
+        {
+          "code": "ABQ",
+          "passengers": 2729026.0,
+          "share_pct": 0.276
+        },
+        {
+          "code": "OMA",
+          "passengers": 2618970.0,
+          "share_pct": 0.2649
+        },
+        {
+          "code": "BUF",
+          "passengers": 2512772.0,
+          "share_pct": 0.2541
+        },
+        {
+          "code": "RIC",
+          "passengers": 2486779.0,
+          "share_pct": 0.2515
+        },
+        {
+          "code": "BOI",
+          "passengers": 2483308.0,
+          "share_pct": 0.2512
+        },
+        {
+          "code": "ORF",
+          "passengers": 2472110.0,
+          "share_pct": 0.25
+        }
+      ],
+      "small": [
+        {
+          "code": "MEM",
+          "passengers": 2469341.0,
+          "share_pct": 0.2498
+        },
+        {
+          "code": "RNO",
+          "passengers": 2388625.0,
+          "share_pct": 0.2416
+        },
+        {
+          "code": "SDF",
+          "passengers": 2381537.0,
+          "share_pct": 0.2409
+        },
+        {
+          "code": "OKC",
+          "passengers": 2311872.0,
+          "share_pct": 0.2338
+        },
+        {
+          "code": "SRQ",
+          "passengers": 2120625.0,
+          "share_pct": 0.2145
+        },
+        {
+          "code": "ELP",
+          "passengers": 2092710.0,
+          "share_pct": 0.2117
+        },
+        {
+          "code": "GRR",
+          "passengers": 2079033.0,
+          "share_pct": 0.2103
+        },
+        {
+          "code": "GEG",
+          "passengers": 2069204.0,
+          "share_pct": 0.2093
+        },
+        {
+          "code": "LGB",
+          "passengers": 2061417.0,
+          "share_pct": 0.2085
+        },
+        {
+          "code": "SAV",
+          "passengers": 2034908.0,
+          "share_pct": 0.2058
+        },
+        {
+          "code": "KOA",
+          "passengers": 2025547.0,
+          "share_pct": 0.2049
+        },
+        {
+          "code": "PVD",
+          "passengers": 1990715.0,
+          "share_pct": 0.2013
+        },
+        {
+          "code": "TUS",
+          "passengers": 1978191.0,
+          "share_pct": 0.2001
+        },
+        {
+          "code": "MYR",
+          "passengers": 1906512.0,
+          "share_pct": 0.1928
+        },
+        {
+          "code": "LIH",
+          "passengers": 1777644.0,
+          "share_pct": 0.1798
+        },
+        {
+          "code": "TUL",
+          "passengers": 1665731.0,
+          "share_pct": 0.1685
+        },
+        {
+          "code": "TYS",
+          "passengers": 1643696.0,
+          "share_pct": 0.1662
+        },
+        {
+          "code": "BHM",
+          "passengers": 1632054.0,
+          "share_pct": 0.1651
+        },
+        {
+          "code": "PSP",
+          "passengers": 1629157.0,
+          "share_pct": 0.1648
+        },
+        {
+          "code": "DSM",
+          "passengers": 1570511.0,
+          "share_pct": 0.1588
+        },
+        {
+          "code": "PNS",
+          "passengers": 1537816.0,
+          "share_pct": 0.1555
+        },
+        {
+          "code": "ALB",
+          "passengers": 1504159.0,
+          "share_pct": 0.1521
+        },
+        {
+          "code": "SYR",
+          "passengers": 1494919.0,
+          "share_pct": 0.1512
+        },
+        {
+          "code": "GSP",
+          "passengers": 1429453.0,
+          "share_pct": 0.1446
+        },
+        {
+          "code": "SFB",
+          "passengers": 1415760.0,
+          "share_pct": 0.1432
+        },
+        {
+          "code": "ROC",
+          "passengers": 1335744.0,
+          "share_pct": 0.1351
+        },
+        {
+          "code": "BZN",
+          "passengers": 1323457.0,
+          "share_pct": 0.1339
+        },
+        {
+          "code": "FAT",
+          "passengers": 1320742.0,
+          "share_pct": 0.1336
+        },
+        {
+          "code": "COS",
+          "passengers": 1275512.0,
+          "share_pct": 0.129
+        },
+        {
+          "code": "PIE",
+          "passengers": 1230032.0,
+          "share_pct": 0.1244
+        },
+        {
+          "code": "PWM",
+          "passengers": 1222400.0,
+          "share_pct": 0.1236
+        },
+        {
+          "code": "HPN",
+          "passengers": 1180434.0,
+          "share_pct": 0.1194
+        },
+        {
+          "code": "LIT",
+          "passengers": 1166995.0,
+          "share_pct": 0.118
+        },
+        {
+          "code": "VPS",
+          "passengers": 1165928.0,
+          "share_pct": 0.1179
+        },
+        {
+          "code": "MSN",
+          "passengers": 1162051.0,
+          "share_pct": 0.1175
+        },
+        {
+          "code": "XNA",
+          "passengers": 1127164.0,
+          "share_pct": 0.114
+        },
+        {
+          "code": "AVL",
+          "passengers": 1097496.0,
+          "share_pct": 0.111
+        },
+        {
+          "code": "GSO",
+          "passengers": 994795.0,
+          "share_pct": 0.1006
+        },
+        {
+          "code": "AZA",
+          "passengers": 981378.0,
+          "share_pct": 0.0993
+        },
+        {
+          "code": "PGD",
+          "passengers": 958165.0,
+          "share_pct": 0.0969
+        },
+        {
+          "code": "GUM",
+          "passengers": 931644.0,
+          "share_pct": 0.0942
+        },
+        {
+          "code": "ECP",
+          "passengers": 926004.0,
+          "share_pct": 0.0937
+        },
+        {
+          "code": "ICT",
+          "passengers": 909586.0,
+          "share_pct": 0.092
+        },
+        {
+          "code": "EUG",
+          "passengers": 825747.0,
+          "share_pct": 0.0835
+        },
+        {
+          "code": "STT",
+          "passengers": 822047.0,
+          "share_pct": 0.0831
+        },
+        {
+          "code": "HSV",
+          "passengers": 814718.0,
+          "share_pct": 0.0824
+        },
+        {
+          "code": "MAF",
+          "passengers": 780985.0,
+          "share_pct": 0.079
+        },
+        {
+          "code": "LEX",
+          "passengers": 777935.0,
+          "share_pct": 0.0787
+        },
+        {
+          "code": "CID",
+          "passengers": 763242.0,
+          "share_pct": 0.0772
+        },
+        {
+          "code": "EYW",
+          "passengers": 740795.0,
+          "share_pct": 0.0749
+        },
+        {
+          "code": "ILM",
+          "passengers": 738491.0,
+          "share_pct": 0.0747
+        },
+        {
+          "code": "MDT",
+          "passengers": 734668.0,
+          "share_pct": 0.0743
+        },
+        {
+          "code": "FSD",
+          "passengers": 704899.0,
+          "share_pct": 0.0713
+        },
+        {
+          "code": "SGF",
+          "passengers": 703480.0,
+          "share_pct": 0.0712
+        },
+        {
+          "code": "SBA",
+          "passengers": 699837.0,
+          "share_pct": 0.0708
+        },
+        {
+          "code": "ISP",
+          "passengers": 686872.0,
+          "share_pct": 0.0695
+        },
+        {
+          "code": "ITO",
+          "passengers": 680632.0,
+          "share_pct": 0.0688
+        },
+        {
+          "code": "BTV",
+          "passengers": 670834.0,
+          "share_pct": 0.0679
+        },
+        {
+          "code": "CAE",
+          "passengers": 663283.0,
+          "share_pct": 0.0671
+        },
+        {
+          "code": "MHT",
+          "passengers": 634256.0,
+          "share_pct": 0.0642
+        },
+        {
+          "code": "JAN",
+          "passengers": 630611.0,
+          "share_pct": 0.0638
+        },
+        {
+          "code": "MFE",
+          "passengers": 626757.0,
+          "share_pct": 0.0634
+        },
+        {
+          "code": "DAY",
+          "passengers": 626666.0,
+          "share_pct": 0.0634
+        },
+        {
+          "code": "HRL",
+          "passengers": 604243.0,
+          "share_pct": 0.0611
+        },
+        {
+          "code": "RDM",
+          "passengers": 601574.0,
+          "share_pct": 0.0608
+        },
+        {
+          "code": "HVN",
+          "passengers": 589274.0,
+          "share_pct": 0.0596
+        },
+        {
+          "code": "FAI",
+          "passengers": 574396.0,
+          "share_pct": 0.0581
+        },
+        {
+          "code": "LBB",
+          "passengers": 572833.0,
+          "share_pct": 0.0579
+        },
+        {
+          "code": "CHA",
+          "passengers": 564389.0,
+          "share_pct": 0.0571
+        },
+        {
+          "code": "FAR",
+          "passengers": 554592.0,
+          "share_pct": 0.0561
+        },
+        {
+          "code": "ATW",
+          "passengers": 540762.0,
+          "share_pct": 0.0547
+        },
+        {
+          "code": "JAC",
+          "passengers": 518568.0,
+          "share_pct": 0.0524
+        },
+        {
+          "code": "MSO",
+          "passengers": 512122.0,
+          "share_pct": 0.0518
+        },
+        {
+          "code": "FCA",
+          "passengers": 503869.0,
+          "share_pct": 0.051
+        },
+        {
+          "code": "MFR",
+          "passengers": 503591.0,
+          "share_pct": 0.0509
+        },
+        {
+          "code": "ACY",
+          "passengers": 501471.0,
+          "share_pct": 0.0507
+        }
+      ]
+    },
+    "counts": {
+      "large": 31,
+      "medium": 34,
+      "small": 76
+    }
+  },
+  "method": "share of national CY2024 total_passengers, thresholds {'large': 0.01, 'medium': 0.0025, 'small': 0.0005}",
+  "caveats": [],
+  "source": "BTS T-100 Segment Summary by Origin Airport (r495-tyji), cached 2026-10-08T15:35:56Z",
+  "confidence": "high"
+}

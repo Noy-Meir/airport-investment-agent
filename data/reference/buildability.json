@@ -1,0 +1,111 @@
+{
+  "_note": "Curated by hand, not pulled from an API -- every fact below must have a source_url or be explicitly flagged needs_verification. Not refreshed by scripts/build_cache.py. Restructured into one entry per constraint (type/value/unit/effective_until/source_url/verified_by_user); no numbers or claims were changed from the prior flat-text version, only split out field-by-field. Full original prose kept verbatim in each entry's `notes`.",
+  "_as_of": "2026-10-08",
+  "airports": {
+    "SNA": {
+      "name": "John Wayne Airport (Orange County)",
+      "constraints": [
+        {
+          "type": "cap",
+          "value": 95,
+          "unit": "average daily departures (ADDs), up from 85",
+          "effective_until": "2030 (curfew provision to 2035)",
+          "source_url": "https://www.ocair.com/about/administration/settlement-agreement/key-provisions-settlement-agreement/",
+          "verified_by_user": false,
+          "needs_verification": "exact phase-in year for each ADD/MAP step; confirm against the current OCAIR capacity-allocation staff report for the active plan year",
+          "notes": "Settlement Agreement caps: Average Daily Departures and annual Million Annual Passengers (MAP) are fixed by a 1985 settlement agreement (as renegotiated in 2014/2020), not by physical capacity. ADDs rise from 85 to 95 and the MAP cap rises from 10.8M to 12.5M on a phased schedule running through the agreement's expiration in 2030-2035 (curfew to 2035)."
+        },
+        {
+          "type": "cap",
+          "value": 12.5,
+          "unit": "million annual passengers (MAP), up from 10.8",
+          "effective_until": "2030 (curfew provision to 2035)",
+          "source_url": "https://www.ocair.com/about/administration/settlement-agreement/key-provisions-settlement-agreement/",
+          "verified_by_user": false,
+          "needs_verification": "exact phase-in year for each ADD/MAP step; confirm against the current OCAIR capacity-allocation staff report for the active plan year",
+          "notes": "Settlement Agreement caps: Average Daily Departures and annual Million Annual Passengers (MAP) are fixed by a 1985 settlement agreement (as renegotiated in 2014/2020), not by physical capacity. ADDs rise from 85 to 95 and the MAP cap rises from 10.8M to 12.5M on a phased schedule running through the agreement's expiration in 2030-2035 (curfew to 2035)."
+        }
+      ]
+    },
+    "DCA": {
+      "name": "Ronald Reagan Washington National Airport",
+      "constraints": [
+        {
+          "type": "perimeter",
+          "value": 1250,
+          "unit": "miles",
+          "effective_until": null,
+          "source_url": "https://www.congress.gov/crs-product/IN12504",
+          "verified_by_user": false,
+          "needs_verification": "current total count of beyond-perimeter slot exemptions after the 2024 Act",
+          "notes": "Statutory perimeter rule limits nonstop flights to 1,250 miles except for a fixed, legislatively-granted set of beyond-perimeter exemptions (10 more added by the FAA Reauthorization Act of 2024)."
+        },
+        {
+          "type": "slot",
+          "value": 60,
+          "unit": "IFR operations/hour, 6am-midnight",
+          "effective_until": null,
+          "source_url": "https://www.congress.gov/crs-product/IN12504",
+          "verified_by_user": false,
+          "needs_verification": "current total count of beyond-perimeter slot exemptions after the 2024 Act",
+          "notes": "Also slot-controlled under the High Density Rule (14 CFR 93.123): 60 IFR operations/hour, 6am-midnight."
+        }
+      ]
+    },
+    "LGA": {
+      "name": "LaGuardia Airport",
+      "constraints": [
+        {
+          "type": "perimeter",
+          "value": 1500,
+          "unit": "miles",
+          "effective_until": null,
+          "source_url": "https://www.congress.gov/crs-product/IN12206",
+          "verified_by_user": false,
+          "needs_verification": "current hourly slot cap number",
+          "notes": "Port Authority-imposed 1,500-mile perimeter rule (1984, self-imposed not federal; exception for Denver, inactive Saturdays)."
+        },
+        {
+          "type": "slot",
+          "value": null,
+          "unit": "hourly slot cap (figure not pinned down in prior research)",
+          "effective_until": "2028",
+          "source_url": "https://www.congress.gov/crs-product/IN12206",
+          "verified_by_user": false,
+          "needs_verification": "current hourly slot cap number",
+          "notes": "FAA slot control under the Order Limiting Operations at LaGuardia, most recently extended through 2028."
+        }
+      ]
+    },
+    "JFK": {
+      "name": "John F. Kennedy International Airport",
+      "constraints": [
+        {
+          "type": "slot",
+          "value": null,
+          "unit": "hourly/daily slot cap (figure not pinned down in prior research)",
+          "effective_until": "2028-10-28",
+          "source_url": "https://www.govinfo.gov/content/pkg/FR-2026-06-23/pdf/2026-12603.pdf",
+          "verified_by_user": false,
+          "needs_verification": "current hourly/daily slot cap number",
+          "notes": "IATA Level 3 (fully coordinated) slot-controlled airport; FAA schedule-limiting Order extended through October 28, 2028."
+        }
+      ]
+    },
+    "EWR": {
+      "name": "Newark Liberty International Airport",
+      "constraints": [
+        {
+          "type": "cap",
+          "value": 72,
+          "unit": "operations/hour (voluntary, negotiated, not a hard FAA slot allocation)",
+          "effective_until": null,
+          "source_url": "https://www.federalregister.gov/documents/2025/09/29/2025-18871/operating-limitations-at-newark-liberty-international-airport",
+          "verified_by_user": false,
+          "needs_verification": "whether the 72/hour figure is still current at query time -- this order has been extended repeatedly on ~1-year cycles",
+          "notes": "IATA Level 2 (schedule facilitation, not hard slot control) -- FAA does not allocate slots or impose minimum-usage requirements; instead a voluntary hourly operating limitation (72 operations/hour as of the FAA's 2025 order) is negotiated with carriers."
+        }
+      ]
+    }
+  }
+}
