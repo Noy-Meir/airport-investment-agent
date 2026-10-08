@@ -44,7 +44,7 @@ def test_sfo_real_cache(real_conn):
     r = get_unmet_demand_decomposition(real_conn, "SFO")
     assert set(r.keys()) == ENVELOPE_KEYS
     assert r["result"]["airport"] == "SFO"
-    assert len(r["result"]["measured"]) == 5
+    assert len(r["result"]["measured"]) == 6
     for fact in r["result"]["measured"]:
         assert {"name", "value", "unit", "as_of", "source", "peer_context"} <= set(fact.keys())
         if fact["value"] is not None:
@@ -57,6 +57,21 @@ def test_sfo_real_cache(real_conn):
         assert {"statement", "rule", "based_on", "strength", "alternative_explanations"} <= set(inference.keys())
         assert "proves" not in inference["statement"]
         assert "shows demand" not in inference["statement"]
+
+
+def test_sfo_metro_context_present(real_conn):
+    r = get_unmet_demand_decomposition(real_conn, "SFO")
+    metro_fact = next(f for f in r["result"]["measured"] if f["name"] == "metro_context")
+    assert metro_fact["value"] is not None
+    assert metro_fact["value"]["metro_id"] == "sf_bay"
+    assert {s["airport"] for s in metro_fact["value"]["siblings"]} == {"OAK", "SJC"}
+
+
+def test_non_metro_airport_metro_context_says_none_on_file(fixture_conn):
+    r = get_unmet_demand_decomposition(fixture_conn, "TST")
+    metro_fact = next(f for f in r["result"]["measured"] if f["name"] == "metro_context")
+    assert metro_fact["value"] is None
+    assert metro_fact["reason"] == "no metro grouping on file"
 
 
 def test_null_seats_load_factor_is_null_with_reason(tmp_path):

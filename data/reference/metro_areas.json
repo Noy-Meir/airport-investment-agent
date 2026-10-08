@@ -1,0 +1,30 @@
+{
+  "_note": "Metro groupings here are an analyst convention for this project -- a hand-picked list of commercial airports commonly treated as serving the same metro area -- NOT an official FAA/OMB/CBSA definition. Every group is needs_verification:true until someone checks it against an authoritative source; source_url is left empty rather than invented.",
+  "_as_of": "2026-10-09",
+  "metros": {
+    "sf_bay": {
+      "name": "San Francisco Bay Area",
+      "airports": ["SFO", "OAK", "SJC"],
+      "source_url": "",
+      "needs_verification": true
+    },
+    "la_basin": {
+      "name": "Los Angeles Basin",
+      "airports": ["LAX", "SNA", "BUR", "LGB", "ONT"],
+      "source_url": "",
+      "needs_verification": true
+    },
+    "nyc": {
+      "name": "New York City Area",
+      "airports": ["JFK", "LGA", "EWR"],
+      "source_url": "",
+      "needs_verification": true
+    },
+    "boston_area": {
+      "name": "Boston Area",
+      "airports": ["BOS", "PVD", "MHT"],
+      "source_url": "",
+      "needs_verification": true
+    }
+  }
+}

@@ -24,6 +24,7 @@ from src.cache.accessors import (
     validate_airport_code,
 )
 from src.cache.config import LONG_HAUL_THRESHOLDS_MI, VOLUME_FLOOR_PAX
+from src.analysis.unmet_demand import get_unmet_demand_decomposition
 from src.reference.buildability import get_buildability as _buildability_lookup
 from src.reference.envelope import envelope
 from src.reference.pax import pax_by_airport_ttm
@@ -231,6 +232,10 @@ def _get_buildability(args, conn):
     return _buildability_lookup(code)
 
 
+def _get_unmet_demand_breakdown(args, conn):
+    return get_unmet_demand_decomposition(conn, args["code"])
+
+
 TOOLS = {
     "rank_airports": {
         "description": (
@@ -403,6 +408,29 @@ TOOLS = {
             "additionalProperties": False,
         },
         "fn": _get_buildability,
+    },
+    "get_unmet_demand_breakdown": {
+        "description": (
+            "Public-data facts relevant to unmet investment demand at one airport, decomposed into three "
+            "sections: 'measured' (facts computed from cached data, e.g. load factor, passenger-vs-seat growth "
+            "gap, delayed-departure share, metro-sibling growth context -- each with value=None and a reason "
+            "when not computable), 'inferred' (weak/moderate deterministic rules over the measured facts, "
+            "always worded 'is consistent with', never 'proves' or 'shows demand', each listing "
+            "alternative_explanations), and 'unknown' (what public BTS/FAA/OurAirports data structurally "
+            "cannot tell us here, e.g. fares, priced-out travelers, slot/gate constraints). There is NO "
+            "single 'unmet demand' number -- never quote one. Always present all three sections to the user "
+            "and say what is unknown. Use for 'is there unmet demand at X' / 'should we invest in X because "
+            "of capacity pressure' style questions."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "code": {"type": "string", "description": "IATA airport code, e.g. 'SFO'."},
+            },
+            "required": ["code"],
+            "additionalProperties": False,
+        },
+        "fn": _get_unmet_demand_breakdown,
     },
 }
 

@@ -178,3 +178,40 @@ existing connection to reuse one (e.g. in tests, against a fixture db).
   nonzero weight -- not actually reachable with the current weight sets, but
   guarded anyway), that is also reported as `"insufficient data"` rather
   than dividing by zero.
+
+## Unmet demand: measured / inferred / unknown (src/analysis/unmet_demand.py)
+
+There is no public BTS/FAA/OurAirports dataset that measures "unmet demand"
+(travelers priced or scheduled out, fares, diversion, physical constraints)
+directly. `get_unmet_demand_decomposition` / the `get_unmet_demand_breakdown`
+tool therefore never return a single unmet-demand number -- they return
+three sections, and the LLM must present all three:
+
+- **measured** -- facts computed from cached data, each its own envelope
+  (`{name, value, unit, as_of, source, peer_context}`), with `value=None`
+  and a `reason` when a fact can't be computed. Includes `ttm_load_factor`,
+  `ttm_passenger_vs_seat_growth_gap`, peak/high-load-factor-month facts,
+  `ttm_delayed_share`, and `metro_context` (TTM passenger growth of sibling
+  airports in the airport's metro group, per `data/reference/
+  metro_areas.json` -- an analyst convention, not an official FAA/OMB/CBSA
+  definition; airports with no metro entry get `value=None`, `reason="no
+  metro grouping on file"`).
+- **inferred** -- deterministic rules over measured peer-context z-scores
+  (thresholds in `src/analysis/unmet_demand_constants.HYPOTHESES`, analyst
+  judgment, not measured values). Always worded "is consistent with", never
+  "proves" or "shows demand", and always lists `alternative_explanations`.
+  One rule, `_metro_diversion_inference`, only fires when a sibling airport's
+  TTM passenger growth exceeds this airport's own AND this airport
+  independently shows capacity pressure; it is explicitly `strength: "weak"`
+  because `UNKNOWABLE.diversion_to_other_metro_airports` (below) means this
+  data can never establish diversion, only suggest it as one explanation
+  among several.
+- **unknown** -- a fixed list (`UNKNOWABLE`) of what public data
+  structurally cannot answer here (fares, priced-out travelers, slot/gate
+  constraints, international O&D demand, diversion to other metro
+  airports).
+
+There is no single number because each of the three sections answers a
+different question (what we measured, what a pattern in those measurements
+is consistent with, what we structurally cannot know) and collapsing them
+into one score would hide exactly the caveats CLAUDE.md requires.

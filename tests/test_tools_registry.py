@@ -13,7 +13,7 @@ def test_get_tool_specs_shapes():
     assert names == {
         "rank_airports", "score_airport", "compare_airports", "sensitivity",
         "list_region_airports", "get_airport_traffic", "compare_congestion", "get_buildability",
-        "get_long_haul_share",
+        "get_long_haul_share", "get_unmet_demand_breakdown",
     }
     for s in specs:
         assert set(s) == {"name", "description", "input_schema"}
@@ -45,6 +45,13 @@ def test_compare_airports_runs_and_is_json_serializable(fixture_conn):
 
 def test_sensitivity_runs_and_is_json_serializable(fixture_conn):
     result = call_tool("sensitivity", {"scope": SCOPE}, conn=fixture_conn)
+    assert "error" not in result
+    assert set(result) == {"result", "method", "caveats", "source", "confidence"}
+    json.dumps(result)
+
+
+def test_get_unmet_demand_breakdown_runs_and_is_json_serializable(fixture_conn):
+    result = call_tool("get_unmet_demand_breakdown", {"code": "TST"}, conn=fixture_conn)
     assert "error" not in result
     assert set(result) == {"result", "method", "caveats", "source", "confidence"}
     json.dumps(result)

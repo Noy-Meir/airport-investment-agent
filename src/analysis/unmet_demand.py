@@ -17,12 +17,14 @@ returns three buckets:
 from src.analysis.unmet_demand_constants import HYPOTHESES, LOAD_FACTOR_HIGH, UNKNOWABLE
 from src.cache.accessors import validate_airport_code
 from src.reference.envelope import envelope
+from src.reference.metro import get_metro_siblings
 from src.reference.pax import get_latest_cached_month, trailing_12_window
 from src.scoring.normalize import robust_z_scores
 from src.scoring.signals import (
     _resolve_end_month,
     get_congestion_signal_ttm,
     get_demand_supply_gap_ttm,
+    get_growth_ttm,
     get_load_factor_ttm,
     get_peer_group_ttm,
 )
@@ -180,6 +182,82 @@ def _delayed_share_fact(conn, code, end_month):
     )
 
 
+def _metro_context_fact(conn, code, end_month):
+    """
+    Observational fact, not an inference: TTM passenger growth of each
+    sibling airport in `code`'s metro group (data/reference/metro_areas.json
+    -- an analyst convention, not an official definition). No entry on file
+    means "no metro grouping on file", never "this airport has no
+    neighbors" (no imputation).
+    """
+    siblings_env = get_metro_siblings(code)
+    as_of = f"{end_month[0]:04d}-{end_month[1]:02d}" if end_month is not None else None
+    if siblings_env["result"] is None:
+        return _fact(
+            "metro_context", None, "sibling_growth_list", as_of, siblings_env["source"],
+            reason="no metro grouping on file",
+        )
+
+    metro = siblings_env["result"]
+    sibling_entries = []
+    for sibling in metro["siblings"]:
+        growth = get_growth_ttm(conn, sibling, end_month)
+        sibling_entries.append({
+            "airport": sibling,
+            "growth_pct": growth["result"]["growth_pct"] if growth["result"] is not None else None,
+            "as_of": growth["result"]["as_of"] if growth["result"] is not None else None,
+        })
+
+    return _fact(
+        "metro_context",
+        {"metro_id": metro["metro_id"], "metro_name": metro["metro_name"], "siblings": sibling_entries},
+        "sibling_growth_list", as_of, siblings_env["source"],
+        caveats=siblings_env["caveats"],
+    )
+
+
+def _metro_diversion_inference(own_growth_fact, metro_context_fact, capacity_pressure_present):
+    """
+    Weak inference only: observed sibling growth outpacing this airport's
+    own growth, while this airport independently shows capacity pressure,
+    is consistent with (not proof of) demand diverting to nearby metro
+    airports -- UNKNOWABLE.diversion_to_other_metro_airports explains why
+    this can never be more than a weak, alternative-laden observation.
+    """
+    if not capacity_pressure_present:
+        return None
+    own_growth = own_growth_fact["value"]
+    metro_context = metro_context_fact["value"]
+    if own_growth is None or metro_context is None:
+        return None
+
+    faster_siblings = [
+        s for s in metro_context["siblings"] if s["growth_pct"] is not None and s["growth_pct"] > own_growth
+    ]
+    if not faster_siblings:
+        return None
+
+    return {
+        "statement": (
+            f"{metro_context_fact['value']['metro_name']} sibling airport(s) "
+            f"{', '.join(s['airport'] for s in faster_siblings)} grew TTM passengers faster than this airport "
+            f"(own growth {own_growth}%) while this airport shows capacity pressure; growth may be diverting to "
+            "nearby airports, but this is a weak observation, not a measurement of diversion"
+        ),
+        "rule": (
+            "capacity_pressure_inference fired AND at least one metro sibling's TTM passenger growth_pct > "
+            "this airport's own TTM passenger growth_pct"
+        ),
+        "based_on": ["metro_context", "ttm_load_factor", "ttm_passenger_vs_seat_growth_gap"],
+        "strength": "weak",
+        "alternative_explanations": [
+            "airline schedule/capacity decisions unrelated to traveler choice",
+            "different route mixes or carrier bases across the metro's airports",
+            "seasonality",
+        ],
+    }
+
+
 def _z(fact):
     """peer_context z-score for a measured fact, or None if unmeasurable/no peer group."""
     peer_context = fact.get("peer_context")
@@ -306,7 +384,7 @@ def _no_pressure_signal_inference(lf_fact, gap_fact, delayed_fact):
     return None
 
 
-def _inferred_rules(lf_fact, gap_fact, delayed_fact):
+def _inferred_rules(lf_fact, gap_fact, delayed_fact, own_growth_fact, metro_context_fact):
     """
     Deterministic inference rules over measured peer-context z-scores -- no
     LLM, no imputation (a rule that needs a null fact simply does not fire).
@@ -314,11 +392,13 @@ def _inferred_rules(lf_fact, gap_fact, delayed_fact):
     analyst judgment, not measured values. Wording always says "is
     consistent with", never "proves" or "shows demand".
     """
+    capacity_pressure = _capacity_pressure_inference(lf_fact, gap_fact)
     inferences = [
-        _capacity_pressure_inference(lf_fact, gap_fact),
+        capacity_pressure,
         _delay_linked_strain_inference(delayed_fact),
         _high_utilization_balanced_growth_inference(lf_fact, gap_fact),
         _no_pressure_signal_inference(lf_fact, gap_fact, delayed_fact),
+        _metro_diversion_inference(own_growth_fact, metro_context_fact, capacity_pressure is not None),
     ]
     return [i for i in inferences if i is not None]
 
@@ -344,9 +424,17 @@ def get_unmet_demand_decomposition(conn, code, end_month=None):
     ttm_load_factor_fact, peak_fact, high_months_fact = _load_factor_facts(conn, airport_code, resolved_end)
     growth_gap_fact = _growth_gap_fact(conn, airport_code, resolved_end)
     delayed_share_fact = _delayed_share_fact(conn, airport_code, resolved_end)
+    metro_context_fact = _metro_context_fact(conn, airport_code, resolved_end)
 
-    measured = [ttm_load_factor_fact, growth_gap_fact, peak_fact, high_months_fact, delayed_share_fact]
-    inferred = _inferred_rules(ttm_load_factor_fact, growth_gap_fact, delayed_share_fact)
+    own_growth = get_growth_ttm(conn, airport_code, resolved_end)
+    own_growth_fact = {"value": own_growth["result"]["growth_pct"] if own_growth["result"] is not None else None}
+
+    measured = [
+        ttm_load_factor_fact, growth_gap_fact, peak_fact, high_months_fact, delayed_share_fact, metro_context_fact,
+    ]
+    inferred = _inferred_rules(
+        ttm_load_factor_fact, growth_gap_fact, delayed_share_fact, own_growth_fact, metro_context_fact,
+    )
 
     sources = sorted({f["source"] for f in measured if f["source"] != "no cached data"})
     any_measured = any(f["value"] is not None for f in measured)
