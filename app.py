@@ -10,14 +10,13 @@ from src.agent.config import ConfigError, load_config
 from src.cache.db import connect
 from src.ui.chat_logic import (
     SAMPLE_QUESTIONS,
-    detect_speech_lang,
     error_to_message,
     format_trace,
     session_usage,
     speech_text,
     summarize_envelopes,
 )
-from src.ui.speech_component import render_mic_input, render_speech_controls
+from src.ui.speech_component import render_speech_controls, render_voice_assets
 
 st.set_page_config(page_title="Airport Investment Intelligence Agent", page_icon="✈️")
 st.title("Airport Investment Intelligence Agent")
@@ -79,6 +78,8 @@ if config_error:
     )
     st.stop()
 
+render_voice_assets()
+
 def _render_assumptions_panel(trace):
     summary = summarize_envelopes(trace)
     with st.expander("Assumptions and data"):
@@ -125,14 +126,9 @@ for idx, message in enumerate(st.session_state.messages):
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
         if message["role"] == "assistant":
-            render_speech_controls(
-                speech_text(message["content"]),
-                detect_speech_lang(message["content"]),
-                key=f"speech-{idx}",
-            )
+            render_speech_controls(speech_text(message["content"]), key=f"speech-{idx}")
             _render_trace_and_assumptions(message)
 
-render_mic_input(key="mic-input")
 user_text = st.chat_input("Ask about airport investment opportunities...")
 if not user_text and st.session_state.pending_question:
     user_text = st.session_state.pending_question
@@ -158,9 +154,7 @@ if user_text:
         if outcome.get("error"):
             readable = error_to_message(outcome["error"])
             st.error(readable)
-            render_speech_controls(
-                speech_text(readable), detect_speech_lang(readable), key=new_key
-            )
+            render_speech_controls(speech_text(readable), key=new_key)
             st.session_state.messages.append({
                 "role": "assistant", "content": readable,
                 "trace": outcome.get("trace", []), "usage": outcome.get("usage"),
@@ -168,9 +162,7 @@ if user_text:
         else:
             st.markdown(outcome["answer"])
             st.session_state.agent_history = outcome["history"]
-            render_speech_controls(
-                speech_text(outcome["answer"]), detect_speech_lang(outcome["answer"]), key=new_key
-            )
+            render_speech_controls(speech_text(outcome["answer"]), key=new_key)
             _render_trace_and_assumptions(outcome)
             st.session_state.messages.append({
                 "role": "assistant", "content": outcome["answer"],
