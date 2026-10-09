@@ -1,3 +1,4 @@
 # Python 3.12 recommended (>=3.10 required)
 pytest
 anthropic==1.12.1
+streamlit==1.65.0
