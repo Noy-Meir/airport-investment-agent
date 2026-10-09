@@ -6,8 +6,9 @@ __pycache__/
 *.pyc
 data/raw/
 data/logs/
-data/cache.db
 data/cache.db-journal
+data/cache.db-wal
+data/cache.db-shm
 .pytest_cache/
 .claude/settings.local.json
 review_bundle.txt

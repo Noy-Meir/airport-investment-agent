@@ -163,5 +163,3 @@ layer plus manual review of sample questions.
 - Research and fill in `buildability.json` / `metro_areas.json` entries
   flagged `needs_verification`, with real sources.
 - Pin Python 3.12 in CI (currently "recommended, ≥3.10 required").
-- Distribute `data/cache.db` via a GitHub Release instead of rebuilding
-  it from scratch (BTS T-100 + OTP downloads) on every fresh checkout.

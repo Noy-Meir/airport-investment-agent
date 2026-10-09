@@ -56,5 +56,4 @@ Python 3.12 recommended (>=3.10 required).
 
 See `docs/DECISIONS.md`: FAA cross-check of hub tiers, buildability.json and
 metro_areas.json `needs_verification` entries, pinning Python 3.12 in CI, an
-API key + spend cap for LLM calls, distributing `data/cache.db` via a GitHub
-Release instead of a rebuild-from-scratch.
+API key + spend cap for LLM calls.

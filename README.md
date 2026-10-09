@@ -20,9 +20,6 @@ cd airport-investment-agent
 python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-python scripts/fetch_cache.py   # downloads the prebuilt  data snapshot
-                                 # from the GitHub Release data-v1 and
-                                 # verifies its SHA-256
 cp .env.example .env            # fill in ANTHROPIC_API_KEY and MODEL_NAME
 streamlit run app.py
 ```
@@ -57,11 +54,11 @@ Nothing is auto-submitted; you can review and edit before sending.
 
 ## Data
 
-Sourced from BTS T-100 (segment traffic), BTS On-Time Performance, and
-OurAirports. The current data window ends 2026-04. Every stored row carries
-a `source` and `fetched_at` stamp. To rebuild the cache from source instead
-of fetching the snapshot (slower, requires network access to BTS/
-OurAirports):
+The repo ships a prebuilt `data/cache.db` snapshot (about 15MB): BTS T-100
+(segment traffic), BTS On-Time Performance, and OurAirports, with data
+through 2026-04. Every stored row carries a `source` and `fetched_at`
+stamp. To rebuild the cache from source instead (slower, requires network
+access to BTS/OurAirports):
 
 ```bash
 python scripts/build_cache.py
@@ -91,8 +88,8 @@ src/analysis   unmet-demand decomposition (measured/inferred/unknown)
 src/tools      the LLM-facing tool registry wrapping the layers above
 src/agent      the agent loop, config, and pricing/cost estimation
 src/ui         Streamlit chat logic and voice controls
-scripts        fetch/build the data cache, and a CLI for one-off questions
-data           cached SQLite DB, raw downloads, and reference JSON
+scripts        build the data cache, and a CLI for one-off questions
+data           cached SQLite DB (shipped prebuilt), raw downloads, and reference JSON
 tests          unit tests over the deterministic layers
 docs           design decisions and scoring methodology notes
 ```
