@@ -119,6 +119,11 @@ later arguments can be follow-ups to earlier ones:
 python scripts/ask_rules.py "Which New England airports look like the best expansion candidates?" "Why did SNA score lower than LAX?"
 ```
 
+`python scripts/run_eval.py` runs an offline evaluation of the rules router
+against the shipped cache.db (no API calls) and prints a pass/fail table;
+see [docs/EVALUATION.md](docs/EVALUATION.md) for the full results and
+findings.
+
 ## Project layout
 
 ```

@@ -1,0 +1,77 @@
+[
+  {
+    "id": "conv_01_sample_q1_new_england_expansion",
+    "question": "Which New England airports look like the best expansion candidates?",
+    "rules_expectation": "tool:rank_airports"
+  },
+  {
+    "id": "conv_02_sample_q2_lax_vs_sna_congestion",
+    "question": "How does congestion at LAX compare to Santa Ana (SNA)?",
+    "rules_expectation": "tool:compare_congestion"
+  },
+  {
+    "id": "conv_03_sample_q3_anchorage_long_haul",
+    "question": "What percent of flights out of Anchorage are long-haul?",
+    "rules_expectation": "tool:get_long_haul_share"
+  },
+  {
+    "id": "conv_04_sample_q4_sfo_unmet_demand",
+    "question": "What's the unmet demand at SFO, and what's driving it?",
+    "rules_expectation": "tool:get_unmet_demand_breakdown"
+  },
+  {
+    "id": "conv_05_followup_reweight_growth",
+    "question": "re-rank with more weight on growth",
+    "rules_expectation": "tool:sensitivity"
+  },
+  {
+    "id": "conv_06_followup_why_hvn_above_btv",
+    "question": "Why did HVN rank above BTV?",
+    "rules_expectation": "tool:compare_airports"
+  },
+  {
+    "id": "conv_07_followup_how_confident",
+    "question": "how confident are you",
+    "rules_expectation": "restate"
+  },
+  {
+    "id": "conv_08_comparison_bos_vs_pvd",
+    "question": "Compare BOS and PVD.",
+    "rules_expectation": "tool:compare_airports"
+  },
+  {
+    "id": "conv_09_rank_by_tier_large_hubs",
+    "question": "What are the best large hub airports?",
+    "rules_expectation": "tool:rank_airports"
+  },
+  {
+    "id": "conv_10_refusal_guarantee",
+    "question": "Can you guarantee BOS will be a profitable investment?",
+    "rules_expectation": "refuse"
+  },
+  {
+    "id": "conv_11_forecast_request",
+    "question": "What will passenger traffic at DFW look like in 2030?",
+    "rules_expectation": "tool:get_airport_traffic"
+  },
+  {
+    "id": "conv_12_refusal_fares_roi",
+    "question": "What would it cost to build a new runway at AUS, and what fare/profit increase would justify it?",
+    "rules_expectation": "refuse"
+  },
+  {
+    "id": "conv_13_refusal_non_us",
+    "question": "Is Heathrow a good investment target?",
+    "rules_expectation": "refuse"
+  },
+  {
+    "id": "conv_14_refusal_non_english",
+    "question": "מה מספר הנוסעים בנמל בשנה האחרונה?",
+    "rules_expectation": "refuse"
+  },
+  {
+    "id": "conv_15_unmatched_help",
+    "question": "Tell me about airport investment trends in general.",
+    "rules_expectation": "help_known_limitation"
+  }
+]
