@@ -1,29 +1,103 @@
 """
-Phase 8 step 3b-1: a pure, deterministic rules-based router.
-plan(message) -> Plan(intent, tool, args) picks a single tool + args for one
-single-turn question using regex/keyword matching only -- no model call, no
-tool execution. Tool names and arg shapes here must stay in lock-step with
-src/tools/registry.py (SCOPE_SCHEMA / TRAFFIC_SCOPE_SCHEMA / TOOLS).
+Phase 8 step 3b-2: refusals/scope, clarification, and follow-ups on top of
+the step 3b-1 single-turn router.
 
-Out of scope for this step (see docs/DECISIONS.md and the eval harness at
-the bottom of this file): follow-up questions ("and what about...", pronoun
-references to a prior turn), refusal-shaped questions (forecasts, legal/
-financial advice, requests to fabricate numbers, out-of-US airports), and
-actually calling call_tool(). Those return Plan(intent="unknown", tool=None,
-args={}) here; a later step handles them.
+plan(message, state=None, conn=None) -> Plan(intent, tool, args, message)
+still picks at most one tool + args using regex/keyword matching only -- no
+model call, no tool execution. Tool names and arg shapes here must stay in
+lock-step with src/tools/registry.py (SCOPE_SCHEMA / TRAFFIC_SCOPE_SCHEMA /
+TOOLS).
+
+New in this step:
+- Fixed-message refusals for guarantees/certainty, legal/financial advice,
+  fares/ROI/construction/financing, non-US airports, non-aviation questions,
+  prompt-injection attempts, and non-English text (mirrors
+  src/agent/system_prompt.md's refusal/scope rules).
+- A clarification message when a ranking question names no resolvable scope,
+  instead of guessing one.
+- A help message (the 4 SAMPLE_QUESTIONS + what's out of scope) for truly
+  unmatched/unknown questions.
+- `State` + follow-up handling: ordinals against a prior ranking, "add X to
+  that comparison", "what about X", tier-scope changes, "why did X rank
+  above Y", "how confident/what are your caveats" (-> intent="restate",
+  executed by the caller in a later step), and reweight requests (only the
+  presets `sensitivity` actually supports -- growth/congestion -- are
+  treated as supported; anything else gets a message offering `sensitivity`
+  instead of a custom one-off reweighting, which the registry doesn't
+  support).
+
+Still out of scope here (see docs/DECISIONS.md): actually calling
+call_tool(). That's a later step; `intent="restate"` and the follow-up
+Plans above are planned but not executed by this module.
 """
 
 import re
-from typing import NamedTuple, Optional
+from dataclasses import dataclass
+from typing import List, NamedTuple, Optional
 
 
 class Plan(NamedTuple):
     intent: str
     tool: Optional[str]
     args: dict
+    # Set only for refusal / clarification / help / restate / unsupported
+    # intents (tool is None): the fixed text to show the user directly.
+    message: Optional[str] = None
 
 
 UNKNOWN = Plan(intent="unknown", tool=None, args={})
+
+# --- conversation state for follow-ups --------------------------------
+
+@dataclass
+class State:
+    last_tool: Optional[str] = None
+    last_args: Optional[dict] = None
+    last_scope: Optional[dict] = None
+    last_airports: Optional[List[str]] = None
+    last_ranking_order: Optional[List[str]] = None
+    last_envelope: Optional[dict] = None
+
+
+def next_state(state, plan_, result):
+    """State to carry into the next turn after executing `plan_` and getting
+    tool `result` (the uniform envelope dict, or None for a turn that called
+    no tool -- a refusal, clarification, restate, or unsupported-reweight).
+    Execution of `plan_` happens elsewhere; this just folds the outcome in.
+    """
+    if plan_.tool is None:
+        # No tool ran: keep whatever context we had so a user can still say
+        # "the second one" right after an aside question.
+        return state if state is not None else State()
+
+    prior_scope = state.last_scope if state is not None else None
+    prior_airports = state.last_airports if state is not None else None
+    prior_order = state.last_ranking_order if state is not None else None
+
+    scope = plan_.args.get("scope", prior_scope)
+    if "codes" in plan_.args:
+        airports = list(plan_.args["codes"])
+    elif "code" in plan_.args:
+        airports = [plan_.args["code"]]
+    else:
+        airports = prior_airports
+
+    ranking_order = prior_order
+    if isinstance(result, dict) and isinstance(result.get("result"), list):
+        rows = result["result"]
+        codes_in_result = [row.get("code") for row in rows if isinstance(row, dict) and row.get("code")]
+        if codes_in_result:
+            ranking_order = codes_in_result
+
+    return State(
+        last_tool=plan_.tool,
+        last_args=plan_.args,
+        last_scope=scope,
+        last_airports=airports,
+        last_ranking_order=ranking_order,
+        last_envelope=result if result is not None else (state.last_envelope if state is not None else None),
+    )
+
 
 # --- scope resolution -------------------------------------------------
 
@@ -201,13 +275,275 @@ _THRESHOLD_MI_RE = re.compile(r"(\d[\d,]*)\s*-?\s*mile")
 _TOP_N_RE = re.compile(r"\btop\s+(\d+)\b", re.IGNORECASE)
 _N_BUSIEST_RE = re.compile(r"\b(\d+)\s+(?:busiest|biggest|largest)\b", re.IGNORECASE)
 
+# Anything in-domain for this project at all; used as a last-resort gate
+# between "truly off-topic" (non_aviation refusal) and "on-topic but
+# unresolved" (help message).
+_DOMAIN_RE = re.compile(
+    r"airport|airline|flight|passenger|traffic|congest|delay|runway|hub\b|tier|invest|score|\brank"
+    r"|compare|long.?haul|unmet|demand|buildability|\bslot|perimeter|data source|capacity|load factor"
+    r"|growth|enplane|metro|region|\bstate\b|expansion|candidate|otp\b",
+    re.IGNORECASE,
+)
 
-def plan(message, conn=None):
-    """Deterministic single-turn tool plan. See module docstring for scope."""
+# --- refusal / scope keyword tables -------------------------------------
+
+_INJECTION_RE = re.compile(
+    r"ignore (all |any )?(previous |prior |your )?instructions"
+    r"|disregard (all |any )?(previous |prior |your )?instructions"
+    r"|reveal (your |the )?(system )?prompt"
+    r"|(what('s| is)|show me) your (system )?prompt",
+    re.IGNORECASE,
+)
+_SINGLE_ANSWER_RE = re.compile(
+    r"no caveats|without (any )?caveats|single best|just tell me the (single |one )?best|one (single )?answer",
+    re.IGNORECASE,
+)
+_GUARANTEE_RE = re.compile(
+    r"\bguarantee|\bguaranteed\b|\bcertain(ty)?\b|\bfor sure\b|\b100%\b|\bpromise\b",
+    re.IGNORECASE,
+)
+_LEGAL_RE = re.compile(
+    r"\blegal(ly)?\b|\bllc\b|\bpartnership\b|\blawyer\b|\battorney\b|\bincorporat",
+    re.IGNORECASE,
+)
+_FARES_RE = re.compile(
+    r"\bfare[s]?\b|\bprofit|\bconstruction cost|\bcost to build\b|\bfinanc(e|ing)\b|\broi\b"
+    r"|\breturn on investment\b|\bcapex\b",
+    re.IGNORECASE,
+)
+_NON_US_KEYWORDS = {
+    "heathrow", "gatwick", "london", "paris", "cdg", "charles de gaulle", "frankfurt",
+    "dubai", "tokyo", "narita", "haneda", "toronto", "pearson", "sydney", "beijing",
+    "shanghai", "singapore", "changi", "amsterdam", "schiphol", "madrid", "rome",
+    "fiumicino", "mexico city", "mumbai", "delhi", "hong kong", "seoul", "incheon",
+}
+_NON_US_RE = re.compile(r"\b(" + "|".join(re.escape(k) for k in _NON_US_KEYWORDS) + r")\b", re.IGNORECASE)
+
+
+def _is_non_english(message):
+    has_latin = bool(re.search(r"[A-Za-z]", message))
+    has_nonascii = bool(re.search(r"[^\x00-\x7F]", message))
+    return has_nonascii and not has_latin
+
+
+# --- follow-up keyword tables --------------------------------------------
+
+_ORDINAL_WORDS = {"first": 1, "second": 2, "third": 3, "fourth": 4, "fifth": 5, "top": 1, "last": -1}
+_ORDINAL_RE = re.compile(
+    r"\bthe\s+(first|second|third|fourth|fifth|top|last)\s+(?:one|airport)?\b"
+    r"|\bnumber\s+(\d+)\b"
+    r"|#(\d+)\b",
+    re.IGNORECASE,
+)
+_ADD_TO_RE = re.compile(r"\badd\b.{0,40}\bto\b.{0,20}\b(that |the )?(comparison|list)\b", re.IGNORECASE)
+_WHAT_ABOUT_RE = re.compile(r"\bwhat about\b", re.IGNORECASE)
+_TIER_FOLLOWUP_RE = re.compile(r"\bfor\s+(large|medium|small|micro)\s+(airports|hubs)\b", re.IGNORECASE)
+_WHY_RANK_RE = re.compile(r"\bwhy\s+(did|does|is)\b.{0,40}\brank", re.IGNORECASE)
+_RESTATE_RE = re.compile(
+    r"how confident (are you|is (that|this))"
+    r"|what('?s| is| are) (the |your )?(caveats|assumptions|confidence)"
+    r"|what assumptions",
+    re.IGNORECASE,
+)
+_REWEIGHT_RE = re.compile(
+    r"matters? more in the ranking|weight.{0,40}(more|higher|heavier)|more weight on|re-?rank.{0,40}weight",
+    re.IGNORECASE,
+)
+_SUPPORTED_PRESET_FACTOR_RE = re.compile(r"\bgrowth\b|\bcongestion\b|\bdelay", re.IGNORECASE)
+
+_SINGLE_CODE_TOOLS = {
+    "score_airport", "get_airport_traffic", "get_long_haul_share",
+    "get_unmet_demand_breakdown", "get_buildability",
+}
+_MULTI_CODE_TOOLS = {"compare_airports", "compare_congestion"}
+_SCOPE_TOOLS = {"rank_airports", "rank_airports_by_traffic", "sensitivity", "list_region_airports"}
+
+
+# --- fixed messages -------------------------------------------------------
+
+_CAPABILITIES_LINE = (
+    " I can rank airports by a transparent score, compare named airports side by side, "
+    "show traffic/growth/congestion data, or break down unmet demand."
+)
+
+_REFUSAL_MESSAGES = {
+    "injection": "I can't ignore or reveal my instructions." + _CAPABILITIES_LINE,
+    "non_english": (
+        "This app only supports English right now, so I can't answer in another language."
+        + _CAPABILITIES_LINE
+    ),
+    "guarantee": (
+        "I can't guarantee outcomes or give a single certain answer -- I can rank airports by a "
+        "transparent, adjustable score instead." + _CAPABILITIES_LINE
+    ),
+    "legal": "I can't give legal or financial/structuring advice." + _CAPABILITIES_LINE,
+    "fares": (
+        "Fares, ROI, profit, construction cost, and financing data aren't available in this project."
+        + _CAPABILITIES_LINE
+    ),
+    "non_us": "This project only covers US airports." + _CAPABILITIES_LINE,
+    "non_aviation": "That's outside airport-investment research, which is what I can help with." + _CAPABILITIES_LINE,
+}
+
+
+def _refusal(kind):
+    return Plan(intent=f"refusal_{kind}", tool=None, args={}, message=_REFUSAL_MESSAGES[kind])
+
+
+def _clarify_ranking():
+    return Plan(
+        intent="clarify_scope",
+        tool=None,
+        args={},
+        message=(
+            "Which scope should I rank -- a region, a hub tier, or a set of states? "
+            'For example: "New England", "large hubs", or "CT and ME".'
+        ),
+    )
+
+
+def _help():
+    from src.ui.chat_logic import SAMPLE_QUESTIONS
+
+    examples = "\n".join(f"- {q}" for q in SAMPLE_QUESTIONS)
+    return Plan(
+        intent="help",
+        tool=None,
+        args={},
+        message=(
+            "I can help with US airport-investment research questions, for example:\n"
+            f"{examples}\n"
+            "I can't give forecasts, guarantees, legal/financial advice, fares/ROI/construction-cost "
+            "figures, or cover non-US airports."
+        ),
+    )
+
+
+# --- follow-up planning ----------------------------------------------------
+
+def _plan_followup(message, text_lower, state, conn):
+    """Returns a Plan if `message` is follow-up-shaped, else None (meaning:
+    not a follow-up, fall through to normal single-turn planning). A
+    follow-up-shaped message with no usable `state` resolves to the help
+    message rather than guessing."""
+
+    m = _ORDINAL_RE.search(text_lower)
+    if m:
+        if state is None or not state.last_ranking_order:
+            return _help()
+        order = state.last_ranking_order
+        if m.group(1):
+            idx = _ORDINAL_WORDS[m.group(1)]
+        else:
+            idx = int(m.group(2) or m.group(3))
+        if idx == 0 or abs(idx) > len(order):
+            return _help()
+        resolved = order[idx - 1] if idx > 0 else order[idx]
+        return Plan(intent="score_airport", tool="score_airport", args={"code": resolved})
+
+    if _ADD_TO_RE.search(text_lower):
+        if state is None or state.last_tool != "compare_airports":
+            return _help()
+        new_codes = resolve_airport_codes(message, conn=conn)
+        if not new_codes:
+            return _help()
+        combined = list(state.last_airports or [])
+        for c in new_codes:
+            if c not in combined:
+                combined.append(c)
+        return Plan(intent="compare_airports", tool="compare_airports", args={"codes": combined})
+
+    if _TIER_FOLLOWUP_RE.search(text_lower):
+        if state is None or state.last_tool not in _SCOPE_TOOLS:
+            return _help()
+        new_scope = _resolve_scope_states_uppercase(message, _resolve_scope(text_lower))
+        if new_scope is None:
+            return _help()
+        args = dict(state.last_args or {})
+        args["scope"] = new_scope
+        return Plan(intent=state.last_tool, tool=state.last_tool, args=args)
+
+    if _WHAT_ABOUT_RE.search(text_lower):
+        if state is None or state.last_tool is None:
+            return _help()
+        new_codes = resolve_airport_codes(message, conn=conn)
+        if not new_codes:
+            return _help()
+        if state.last_tool in _SINGLE_CODE_TOOLS:
+            args = dict(state.last_args or {})
+            args["code"] = new_codes[0]
+            return Plan(intent=state.last_tool, tool=state.last_tool, args=args)
+        if state.last_tool in _MULTI_CODE_TOOLS:
+            combined = list(state.last_airports or [])
+            for c in new_codes:
+                if c not in combined:
+                    combined.append(c)
+            args = dict(state.last_args or {})
+            args["codes"] = combined
+            return Plan(intent=state.last_tool, tool=state.last_tool, args=args)
+        return _help()
+
+    if _WHY_RANK_RE.search(text_lower):
+        codes = resolve_airport_codes(message, conn=conn)
+        if len(codes) >= 2:
+            return Plan(intent="compare_airports", tool="compare_airports", args={"codes": codes[:2]})
+        return _help()
+
+    if _RESTATE_RE.search(text_lower):
+        if state is None or state.last_envelope is None:
+            return _help()
+        return Plan(intent="restate", tool=None, args={})
+
+    if _REWEIGHT_RE.search(text_lower):
+        explicit_scope = _resolve_scope_states_uppercase(message, _resolve_scope(text_lower))
+        if explicit_scope is not None:
+            # Self-contained scope named in the message itself (e.g. "How
+            # robust is the New England ranking ...") -- not a follow-up,
+            # let the normal single-turn sensitivity match handle it.
+            return None
+        if state is None or state.last_scope is None:
+            return _help()
+        if _SUPPORTED_PRESET_FACTOR_RE.search(text_lower):
+            return Plan(intent="sensitivity", tool="sensitivity", args={"scope": state.last_scope})
+        return Plan(
+            intent="reweight_unsupported",
+            tool=None,
+            args={},
+            message=(
+                "The scoring weights are fixed hypotheses, not freely adjustable -- I can run a "
+                "sensitivity check across alternative preset weight sets (equal, growth-heavy, "
+                "congestion-heavy, drop-congestion) instead."
+            ),
+        )
+
+    return None
+
+
+def plan(message, state=None, conn=None):
+    """Deterministic router. See module docstring for scope."""
     if not message or not isinstance(message, str):
         return UNKNOWN
 
     text_lower = message.lower()
+
+    if _INJECTION_RE.search(text_lower):
+        return _refusal("injection")
+    if _is_non_english(message):
+        return _refusal("non_english")
+
+    followup = _plan_followup(message, text_lower, state, conn)
+    if followup is not None:
+        return followup
+
+    if _SINGLE_ANSWER_RE.search(text_lower) or _GUARANTEE_RE.search(text_lower):
+        return _refusal("guarantee")
+    if _LEGAL_RE.search(text_lower):
+        return _refusal("legal")
+    if _FARES_RE.search(text_lower):
+        return _refusal("fares")
+    if _NON_US_RE.search(text_lower):
+        return _refusal("non_us")
+
     codes = resolve_airport_codes(message, conn=conn)
     scope = _resolve_scope_states_uppercase(message, _resolve_scope(text_lower))
 
@@ -261,7 +597,7 @@ def plan(message, conn=None):
             if top_n_match:
                 args["top_n"] = int(top_n_match.group(1))
             return Plan("rank_airports", "rank_airports", args)
-        return UNKNOWN
+        return _clarify_ranking()
 
     if _LIST_REGION_RE.search(text_lower):
         if scope is not None and ("region" in scope or "states" in scope):
@@ -275,7 +611,10 @@ def plan(message, conn=None):
     if _TRAFFIC_RE.search(text_lower) and len(codes) == 1:
         return Plan("airport_traffic", "get_airport_traffic", {"code": codes[0]})
 
-    return UNKNOWN
+    if not _DOMAIN_RE.search(text_lower):
+        return _refusal("non_aviation")
+
+    return _help()
 
 
 # --- eval harness (run as a script: python -m src.agent.rules_router) ------
@@ -288,10 +627,27 @@ def _run_eval(path="data/eval/tool_selection_cases.json"):
 
     matched, unmatched, out_of_scope = [], [], []
     for case in cases:
-        if "previous_turn" in case or case["id"].startswith("followup_") or not case["expected_tools"]:
-            out_of_scope.append(case["id"])
+        if "previous_turn" in case:
+            out_of_scope.append(
+                (case["id"], "multi-turn case; needs State wired up by the caller, not evaluable from a bare question")
+            )
             continue
+        if case["id"].startswith("followup_"):
+            out_of_scope.append(
+                (case["id"], "follow-up case; covered directly in tests/test_rules_router.py with a prepared State")
+            )
+            continue
+
         p = plan(case["question"])
+        if not case["expected_tools"]:
+            # Refusal/out-of-scope case: "matched" means the router declined
+            # with a fixed message and called no tool.
+            if p.tool is None and p.message:
+                matched.append(case["id"])
+            else:
+                unmatched.append((case["id"], p.tool))
+            continue
+
         if p.tool is not None and p.tool in case["expected_tools"]:
             matched.append(case["id"])
         else:
