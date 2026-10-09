@@ -181,13 +181,11 @@ def test_old_tool_results_stubbed_on_second_turn(fixture_conn):
     assert full_history_tool_results[0]["content"][0]["content"] != "[earlier tool result omitted]"
 
 
-def test_missing_env_vars_give_clear_error(monkeypatch, tmp_path):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.delenv("MODEL_NAME", raising=False)
+def test_missing_env_vars_give_clear_error_for_anthropic_provider(tmp_path):
     empty_dotenv = tmp_path / ".env"
 
     with pytest.raises(ConfigError) as excinfo:
-        load_config(dotenv_path=empty_dotenv, env={})
+        load_config(dotenv_path=empty_dotenv, env={"LLM_PROVIDER": "anthropic"})
 
     assert "ANTHROPIC_API_KEY" in str(excinfo.value)
     assert "MODEL_NAME" in str(excinfo.value)

@@ -5,12 +5,11 @@ lives in src/ui/chat_logic.py so it can be unit-tested without streamlit.
 
 import streamlit as st
 
-from src.agent.agent import run_turn
-from src.agent.config import ConfigError, load_config
+from src.agent.config import load_config
+from src.agent.respond import Session, respond
 from src.cache.db import connect
 from src.ui.chat_logic import (
     SAMPLE_QUESTIONS,
-    error_to_message,
     speech_text,
 )
 from src.ui.speech_component import render_speech_controls, render_voice_assets
@@ -19,24 +18,28 @@ st.set_page_config(page_title="Airport Investment Intelligence Agent", page_icon
 st.title("Airport Investment Intelligence Agent")
 st.caption("A screening aid for US airports, built on public BTS and OurAirports data.")
 
+_MODE_LABELS = {
+    "Auto": "auto",
+    "Built-in rules (no AI)": "rules",
+    "AI model": "anthropic",
+}
+
 
 def _init_state():
     if "messages" not in st.session_state:
         st.session_state.messages = []
-    if "agent_history" not in st.session_state:
-        st.session_state.agent_history = []
+    if "session" not in st.session_state:
+        st.session_state.session = Session()
     if "pending_question" not in st.session_state:
         st.session_state.pending_question = None
+    if "answer_mode" not in st.session_state:
+        st.session_state.answer_mode = "Auto"
 
 
 _init_state()
 
-try:
-    config = load_config()
-    config_error = None
-except ConfigError as e:
-    config = None
-    config_error = str(e)
+config = load_config()
+has_api_key = config["has_api_key"]
 
 with st.sidebar:
     st.subheader("Sample questions")
@@ -47,19 +50,27 @@ with st.sidebar:
     st.divider()
     if st.button("New conversation", use_container_width=True):
         st.session_state.messages = []
-        st.session_state.agent_history = []
+        st.session_state.session = Session()
         st.session_state.pending_question = None
         st.rerun()
 
     st.divider()
-    st.caption(f"Model: {config['model_name']}" if config else "Model: (not configured)")
+    mode_options = ["Auto", "Built-in rules (no AI)"] + (["AI model"] if has_api_key else [])
+    if st.session_state.answer_mode not in mode_options:
+        st.session_state.answer_mode = "Auto"
+    st.radio("Answer mode", mode_options, key="answer_mode")
+    if not has_api_key:
+        st.caption("No API key configured")
 
-if config_error:
-    st.error(
-        "Agent isn't configured yet: "
-        f"{config_error} Set ANTHROPIC_API_KEY and MODEL_NAME (shell env or .env) and reload."
-    )
-    st.stop()
+    if st.session_state.answer_mode == "Built-in rules (no AI)":
+        active_caption = "Active: built-in rules interpreter"
+    elif st.session_state.answer_mode == "AI model":
+        active_caption = f"Active: AI model ({config['model_name']})"
+    elif has_api_key:
+        active_caption = f"Active: AI model ({config['model_name']})"
+    else:
+        active_caption = "Active: built-in rules interpreter"
+    st.caption(active_caption)
 
 render_voice_assets()
 
@@ -84,18 +95,14 @@ if user_text:
         with st.spinner("Working..."):
             conn = connect()
             try:
-                outcome = run_turn(st.session_state.agent_history, user_text, conn=conn)
+                provider_override = _MODE_LABELS[st.session_state.answer_mode]
+                outcome = respond(
+                    st.session_state.session, user_text, conn=conn, provider_override=provider_override
+                )
             finally:
                 conn.close()
 
         new_key = f"speech-{len(st.session_state.messages)}"
-        if outcome.get("error"):
-            readable = error_to_message(outcome["error"])
-            st.error(readable)
-            render_speech_controls(speech_text(readable), key=new_key)
-            st.session_state.messages.append({"role": "assistant", "content": readable})
-        else:
-            st.markdown(outcome["answer"])
-            st.session_state.agent_history = outcome["history"]
-            render_speech_controls(speech_text(outcome["answer"]), key=new_key)
-            st.session_state.messages.append({"role": "assistant", "content": outcome["answer"]})
+        st.markdown(outcome["answer"])
+        render_speech_controls(speech_text(outcome["answer"]), key=new_key)
+        st.session_state.messages.append({"role": "assistant", "content": outcome["answer"]})

@@ -1,39 +1,40 @@
 """
-Run one agent turn against the real Anthropic API and print the answer,
+Run one agent turn through src.agent.respond.respond and print the answer,
 the tools called, and token usage + estimated cost.
 
 Usage:
     python scripts/ask.py "How does BOS look as an investment?"
+    python scripts/ask.py --rules "How does BOS look as an investment?"
 
-Requires ANTHROPIC_API_KEY and MODEL_NAME (env or .env at project root).
-Not auto-run by anything -- this makes a real, billed API call.
+With no API key configured, falls back to the built-in rules interpreter
+automatically (LLM_PROVIDER=auto). --rules forces the rules interpreter and
+never makes a billed API call.
 """
 
+import argparse
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.agent.agent import run_turn
+from src.agent.respond import Session, respond
 
 
 def main():
-    if len(sys.argv) != 2:
-        print('Usage: python scripts/ask.py "your question"')
-        sys.exit(1)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("question")
+    parser.add_argument("--rules", action="store_true", help="Force the built-in rules interpreter; no API call.")
+    args = parser.parse_args()
 
-    question = sys.argv[1]
-    result = run_turn([], question)
+    session = Session()
+    result = respond(session, args.question, provider_override="rules" if args.rules else None)
 
-    print("=== Answer ===")
+    print(f"=== Answer (mode: {result['mode']}) ===")
     print(result["answer"])
 
-    if "error" in result:
-        err = result["error"]
-        print("\n=== Error ===")
-        print(f"type: {err['type']}")
-        print(f"status_code: {err['status_code']}")
-        print(f"message: {err['message']}")
+    if result.get("notice"):
+        print("\n=== Notice ===")
+        print(result["notice"])
 
     print("\n=== Tools called ===")
     if not result["trace"]:
