@@ -20,7 +20,7 @@ cd airport-investment-agent
 python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-python scripts/fetch_cache.py   # downloads the prebuilt ~58MB data snapshot
+python scripts/fetch_cache.py   # downloads the prebuilt  data snapshot
                                  # from the GitHub Release data-v1 and
                                  # verifies its SHA-256
 cp .env.example .env            # fill in ANTHROPIC_API_KEY and MODEL_NAME
