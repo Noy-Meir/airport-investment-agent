@@ -8,6 +8,7 @@ verify answers against.
 """
 
 import json
+import re
 import time
 from pathlib import Path
 
@@ -19,6 +20,9 @@ MAX_TOOL_ITERATIONS = 8
 RETRY_BACKOFF_SECONDS = 0.5
 
 SYSTEM_PROMPT_PATH = Path(__file__).parent / "system_prompt.md"
+
+_API_KEY_PATTERN = re.compile(r"sk-ant-[A-Za-z0-9_-]+")
+_ERROR_MESSAGE_MAX_LEN = 300
 
 
 def _attr(obj, name, default=None):
@@ -73,6 +77,34 @@ _TRANSIENT_ERROR_NAMES = ("RateLimitError", "APITimeoutError", "APIConnectionErr
 
 def _is_transient(exc):
     return type(exc).__name__ in _TRANSIENT_ERROR_NAMES
+
+
+def _classify_error(exc):
+    """
+    Sanitized error info safe to hand back to a caller/print to a user:
+    a coarse category, the HTTP status code if any, and a truncated,
+    API-key-redacted message. Never includes the raw exception/traceback.
+    """
+    import anthropic
+
+    if isinstance(exc, anthropic.AuthenticationError):
+        category = "auth"
+    elif isinstance(exc, anthropic.BadRequestError):
+        category = "bad_request"
+    elif isinstance(exc, anthropic.RateLimitError):
+        category = "rate_limit"
+    elif isinstance(exc, anthropic.APITimeoutError):
+        category = "timeout"
+    elif isinstance(exc, anthropic.APIConnectionError):
+        category = "connection"
+    else:
+        category = "other"
+
+    status_code = getattr(exc, "status_code", None)
+    raw_message = getattr(exc, "message", None) or str(exc)
+    message = _API_KEY_PATTERN.sub("[REDACTED]", raw_message)[:_ERROR_MESSAGE_MAX_LEN]
+
+    return {"type": category, "status_code": status_code, "message": message}
 
 
 def _call_with_retry(client, **kwargs):
@@ -164,7 +196,7 @@ def run_turn(history, user_message, client=None, conn=None):
                 "history": history,
                 "trace": trace,
                 "usage": _finalize_usage(usage_totals),
-                "error": {"type": type(e).__name__, "message": str(e)},
+                "error": _classify_error(e),
             }
 
         _accumulate_usage(usage_totals, _attr(response, "usage", {}))

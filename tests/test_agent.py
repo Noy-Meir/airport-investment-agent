@@ -1,11 +1,24 @@
 import json
 from types import SimpleNamespace
 
+import anthropic
+import httpx2
 import pytest
 
 from src.agent import agent as agent_mod
 from src.agent.agent import MAX_TOOL_ITERATIONS, run_turn
 from src.agent.config import ConfigError, load_config
+
+
+def _status_error(cls, status_code, message):
+    request = httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
+    response = httpx2.Response(status_code, request=request)
+    return cls(message, response=response, body=None)
+
+
+def _connection_error(message="Connection error."):
+    request = httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
+    return anthropic.APIConnectionError(message=message, request=request)
 
 
 def _usage(input_tokens=10, output_tokens=5, cache_read_input_tokens=0, cache_creation_input_tokens=0):
@@ -178,6 +191,44 @@ def test_missing_env_vars_give_clear_error(monkeypatch, tmp_path):
 
     assert "ANTHROPIC_API_KEY" in str(excinfo.value)
     assert "MODEL_NAME" in str(excinfo.value)
+
+
+def test_api_error_400_classified_as_bad_request(fixture_conn):
+    client = FakeClient([_status_error(anthropic.BadRequestError, 400, "model field is required")])
+    result = run_turn([], "How does BOS look?", client=client, conn=fixture_conn)
+
+    assert "error" in result
+    assert result["error"]["type"] == "bad_request"
+    assert result["error"]["status_code"] == 400
+    assert "model field is required" in result["error"]["message"]
+    assert len(client.messages.calls) == 1  # non-transient: no retry
+
+
+def test_api_error_401_classified_as_auth(fixture_conn):
+    client = FakeClient([_status_error(anthropic.AuthenticationError, 401, "invalid x-api-key")])
+    result = run_turn([], "How does BOS look?", client=client, conn=fixture_conn)
+
+    assert result["error"]["type"] == "auth"
+    assert result["error"]["status_code"] == 401
+    assert len(client.messages.calls) == 1
+
+
+def test_connection_error_classified_as_connection(fixture_conn):
+    client = FakeClient([_connection_error(), _connection_error()])
+    result = run_turn([], "How does BOS look?", client=client, conn=fixture_conn)
+
+    assert result["error"]["type"] == "connection"
+    assert result["error"]["status_code"] is None
+    assert len(client.messages.calls) == 2  # transient: retried once
+
+
+def test_api_error_message_redacts_api_key(fixture_conn):
+    leaked = "sk-ant-abcDEF123_-xyzSECRET"
+    client = FakeClient([_status_error(anthropic.BadRequestError, 400, f"rejected key {leaked} in header")])
+    result = run_turn([], "How does BOS look?", client=client, conn=fixture_conn)
+
+    assert leaked not in json.dumps(result)
+    assert "[REDACTED]" in result["error"]["message"]
 
 
 def test_api_key_never_appears_in_returned_values(fixture_conn, monkeypatch):

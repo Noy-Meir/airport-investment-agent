@@ -28,6 +28,13 @@ def main():
     print("=== Answer ===")
     print(result["answer"])
 
+    if "error" in result:
+        err = result["error"]
+        print("\n=== Error ===")
+        print(f"type: {err['type']}")
+        print(f"status_code: {err['status_code']}")
+        print(f"message: {err['message']}")
+
     print("\n=== Tools called ===")
     if not result["trace"]:
         print("(none)")
