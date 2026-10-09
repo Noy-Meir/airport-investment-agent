@@ -270,6 +270,29 @@ below: MDW moves from the large tier to the medium tier under TTM. Its
 national passenger share sits right at the large-tier threshold, so this is
 a threshold-boundary effect of the trailing window, not a data problem.
 
+## Adding a data source
+
+Checklist for wiring in a new upstream data source (e.g. a new BTS/FAA
+dataset):
+
+1. Write a client/loader (`src/clients` or a `src/cache` fetch function)
+   that pulls from the upstream API/file.
+2. If it's cheap to keep as a flat file rather than a `cache.db` table, add
+   a committed snapshot under `data/snapshots/` (see that directory's
+   README) and a `scripts/refresh_<source>.py` script to regenerate it.
+   Otherwise add a table to `src/cache/db.py`'s `SCHEMA` and a writer, same
+   as the existing four sources.
+3. Add one entry to `data/sources_manifest.json` (id, name, publisher, url,
+   access, storage, vintage, fetched_at, row_count, notes, license) --
+   `src/cache/manifest.validate_manifest` checks it.
+4. Add/extend an accessor in `src/cache/accessors.py` (or a reference
+   lookup) returning the uniform envelope.
+5. Expose it via a new tool in `src/tools/registry.py`, or fold it into an
+   existing signal in `src/scoring`, as appropriate -- never let the LLM
+   see it unwrapped.
+6. Add tests (loader/accessor + the tool through `call_tool`) and new
+   `data/eval/tool_selection_cases.json` cases if a new tool was added.
+
 ## Open items
 - FAA cross-check of hub tiers (large/medium/small) against FAA's own list.
 - `buildability.json` facts flagged `needs_verification` (exact current

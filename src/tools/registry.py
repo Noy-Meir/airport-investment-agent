@@ -26,6 +26,7 @@ from src.cache.accessors import (
 )
 from src.cache.config import LONG_HAUL_THRESHOLDS_MI, VOLUME_FLOOR_PAX
 from src.analysis.unmet_demand import get_unmet_demand_decomposition
+from src.cache.manifest import MANIFEST_PATH, load_manifest
 from src.reference.buildability import get_buildability as _buildability_lookup
 from src.reference.envelope import envelope
 from src.reference.hub_tiers import compute_hub_tiers_ttm
@@ -328,6 +329,23 @@ def _get_unmet_demand_breakdown(args, conn):
     return get_unmet_demand_decomposition(conn, args["code"])
 
 
+def _describe_data_sources(args, conn):
+    method = "lookup in data/sources_manifest.json -- a static registry, not a live check of the data"
+    entries = load_manifest()
+    sources = [
+        {
+            "name": e["name"],
+            "publisher": e["publisher"],
+            "vintage": e["vintage"],
+            "access": e["access"],
+            "caveat": e["notes"],
+            "url": e["url"],
+        }
+        for e in entries
+    ]
+    return envelope(sources, method, [], MANIFEST_PATH, "high")
+
+
 TOOLS = {
     "rank_airports": {
         "description": (
@@ -543,6 +561,20 @@ TOOLS = {
             "additionalProperties": False,
         },
         "fn": _get_unmet_demand_breakdown,
+    },
+    "describe_data_sources": {
+        "description": (
+            "List every upstream data source this project uses (name, publisher, vintage/freshness, "
+            "access method, a one-line caveat, and source URL), from data/sources_manifest.json. Use "
+            "when asked what data the system uses, how fresh/recent it is, or where a figure (e.g. "
+            "passenger numbers) comes from. Does not look up or validate any specific airport."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": False,
+        },
+        "fn": _describe_data_sources,
     },
 }
 

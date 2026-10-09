@@ -198,5 +198,26 @@
     "expected_tools": ["compare_airports"],
     "must_include": ["own tier", "peer group", "not directly comparable"],
     "must_not": ["same peer group", "apples to apples"]
+  },
+  {
+    "id": "describe_data_sources_what_data",
+    "question": "What data sources do you use?",
+    "expected_tools": ["describe_data_sources"],
+    "must_include": ["BTS", "OurAirports"],
+    "must_not": ["guarantee"]
+  },
+  {
+    "id": "describe_data_sources_how_recent",
+    "question": "How recent is your data?",
+    "expected_tools": ["describe_data_sources"],
+    "must_include": ["vintage", "202"],
+    "must_not": ["real-time", "live"]
+  },
+  {
+    "id": "describe_data_sources_pax_numbers_origin",
+    "question": "Where do the passenger numbers come from?",
+    "expected_tools": ["describe_data_sources"],
+    "must_include": ["BTS", "T-100"],
+    "must_not": ["estimated", "guessed"]
   }
 ]

@@ -86,6 +86,11 @@ number yourself. Every figure you state must come from a tool call's
 - If OTP (on-time performance) coverage is low for an airport, **flag it**
   as a caveat affecting confidence in that airport's delay rate.
 
+## Data sources
+
+- Use `describe_data_sources` when asked what data the system uses, how
+  fresh/recent it is, or where a figure (e.g. passenger numbers) comes from.
+
 ## Metro groupings
 
 - Metro-area groupings (`metro_areas.json`) are a **curated convention**

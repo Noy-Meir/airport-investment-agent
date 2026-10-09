@@ -1,0 +1,54 @@
+[
+  {
+    "id": "bts_t100_airport_month",
+    "name": "BTS T-100 Segment Summary by Origin Airport",
+    "publisher": "US DOT Bureau of Transportation Statistics (BTS)",
+    "url": "https://data.bts.gov/resource/r495-tyji.json",
+    "access": "snapshot-in-db",
+    "storage": "source_a_airport_month",
+    "vintage": "monthly, 2023-01..2026-04",
+    "fetched_at": "2026-10-08T21:36:46Z",
+    "row_count": 36137,
+    "notes": "Socrata dataset r495-tyji; departing-passenger totals by origin airport-month, domestic/intl split, no imputation (NULL stays NULL).",
+    "license": "US government work, public domain"
+  },
+  {
+    "id": "bts_t100_route",
+    "name": "BTS T-100 Segment (All Carriers), route level",
+    "publisher": "US DOT Bureau of Transportation Statistics (BTS)",
+    "url": "https://www.transtats.bts.gov/PREZIP/",
+    "access": "snapshot-in-db",
+    "storage": "t100_route_agg",
+    "vintage": "CY2025",
+    "fetched_at": "2026-10-08T21:37:12Z",
+    "row_count": 53553,
+    "notes": "Route-level (origin/dest/class) departures and distance, aggregated from the TranStats FMG ZIP; distance kept as max non-null value seen per route.",
+    "license": "US government work, public domain"
+  },
+  {
+    "id": "bts_otp",
+    "name": "BTS On-Time Performance (Reporting Carrier)",
+    "publisher": "US DOT Bureau of Transportation Statistics (BTS)",
+    "url": "https://transtats.bts.gov/PREZIP/",
+    "access": "snapshot-in-db",
+    "storage": "otp_airport_month",
+    "vintage": "monthly, 2025-08..2026-07",
+    "fetched_at": "2026-10-08T21:39:56Z",
+    "row_count": 4140,
+    "notes": "Domestic reporting-carrier on-time performance only; congestion/delay figures from this source never cover international departures.",
+    "license": "US government work, public domain"
+  },
+  {
+    "id": "ourairports",
+    "name": "OurAirports airports.csv",
+    "publisher": "OurAirports (community-maintained)",
+    "url": "https://davidmegginson.github.io/ourairports-data/airports.csv",
+    "access": "snapshot-in-db",
+    "storage": "ourairports",
+    "vintage": "current snapshot as of fetch (not a time series)",
+    "fetched_at": "2026-10-08T21:39:57Z",
+    "row_count": 2036,
+    "notes": "closed-type rows dropped before insert; a duplicate active iata_code fails ingest loudly rather than silently picking one.",
+    "license": "public domain / open data (OurAirports terms)"
+  }
+]

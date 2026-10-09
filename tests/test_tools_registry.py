@@ -15,7 +15,7 @@ def test_get_tool_specs_shapes():
     assert names == {
         "rank_airports", "rank_airports_by_traffic", "score_airport", "compare_airports", "sensitivity",
         "list_region_airports", "get_airport_traffic", "compare_congestion", "get_buildability",
-        "get_long_haul_share", "get_unmet_demand_breakdown",
+        "get_long_haul_share", "get_unmet_demand_breakdown", "describe_data_sources",
     }
     for s in specs:
         assert set(s) == {"name", "description", "input_schema"}
@@ -329,4 +329,23 @@ def test_rank_airports_with_no_conn_still_works(real_disk_db):
     """score.py's own _open_conn fallback already covered this path -- guard against a regression there too."""
     result = call_tool("rank_airports", {"scope": SCOPE, "top_n": 5})
     assert "error" not in result
+    json.dumps(result)
+
+
+def test_describe_data_sources_runs_and_is_json_serializable(fixture_conn):
+    result = call_tool("describe_data_sources", {}, conn=fixture_conn)
+    assert "error" not in result
+    assert set(result) == {"result", "method", "caveats", "source", "confidence"}
+    assert result["confidence"] == "high"
+    assert len(result["result"]) == 4
+    for entry in result["result"]:
+        assert set(entry) == {"name", "publisher", "vintage", "access", "caveat", "url"}
+    json.dumps(result)
+
+
+def test_describe_data_sources_with_no_conn_opens_real_db(real_disk_db):
+    """describe_data_sources ignores conn entirely, but call_tool(conn=None) must still not crash opening one."""
+    result = call_tool("describe_data_sources", {})
+    assert "error" not in result
+    assert set(result) == {"result", "method", "caveats", "source", "confidence"}
     json.dumps(result)
