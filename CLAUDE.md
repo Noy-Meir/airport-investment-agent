@@ -1,13 +1,13 @@
 # Airport Investment Intelligence Agent
 
 Deloitte FDE take-home. Agent that answers airport-investment questions using
-real BTS/FAA/OurAirports data.
+real BTS/OurAirports data.
 
 Python 3.12 recommended (>=3.10 required).
 
 ## Layers
 
-- `src/cache` — cache-through SQLite over BTS/FAA/OurAirports (`accessors.py`,
+- `src/cache` — cache-through SQLite over BTS/OurAirports (`accessors.py`,
   `db.py`); every row/aggregate carries a source stamp and as-of period.
 - `src/reference` — curated/derived lookups: hub tiers, regions, pax
   windows, buildability.json, metro_areas.json, the `envelope()` helper.
@@ -16,10 +16,18 @@ Python 3.12 recommended (>=3.10 required).
 - `src/analysis` — unmet-demand decomposition (measured/inferred/unknown).
 - `src/tools` — the LLM-facing tool registry (`registry.py`) wrapping the
   above as uniform-envelope, schema-validated tool calls.
+- `src/agent` — `respond.py` is the single entry point (UI + CLI): picks
+  AI model vs. built-in rules interpreter per `LLM_PROVIDER`/sidebar
+  override, and falls back to rules with a notice if the AI model is
+  unavailable or errors. `rules_router.py` is the deterministic,
+  no-LLM path (regex/keyword `plan()` + `answer()`, zero cost).
+  `narrators.py` renders tool envelopes into template text for that path.
+  An API key is optional; `config.py` resolves it from `.env`/environment.
 
 ## Tools (`src/tools/registry.py`)
 
 - `rank_airports` — leaderboard for a scope (region/tier/states).
+- `rank_airports_by_traffic` — rank a scope by TTM departing-passenger volume.
 - `score_airport` — one airport's composite score + signal breakdown.
 - `compare_airports` — side-by-side scores for a named list.
 - `sensitivity` — re-rank a scope under alternative weight sets.
@@ -30,6 +38,8 @@ Python 3.12 recommended (>=3.10 required).
 - `get_buildability` — curated capacity/slot/perimeter constraints.
 - `get_unmet_demand_breakdown` — measured/inferred/unknown decomposition;
   never a single unmet-demand number.
+- `describe_data_sources` — lists every upstream data source (name,
+  publisher, vintage, access method, caveat, source URL).
 
 ## Rules
 
@@ -38,11 +48,13 @@ Python 3.12 recommended (>=3.10 required).
   `{result, method, caveats, source, confidence}`.
 - Scoring z-scores are computed within an airport's own TTM hub-tier peer
   group, never against the full universe.
-- **Absolute-gap guard**: a peer-relative z-score alone is never enough for
+- **Raw-gap condition**: a peer-relative z-score alone is never enough for
   an inference (it can be high purely because peers are low) — the raw
   demand_supply_gap must also be positive.
 - The LLM only selects tools and narrates; it never computes or asserts a
   number itself. No unsourced facts — every claim traces to a tool `source`.
+  The rules interpreter path follows the same rule by construction: it only
+  selects a tool and fills a template, never computes a number.
 - No raw user text interpolated into queries (SQL/Socrata/etc.) — parameterize.
 - No API keys in git; no hardcoded verdicts in scripts.
 
@@ -55,5 +67,4 @@ Python 3.12 recommended (>=3.10 required).
 ## Open items
 
 See `docs/DECISIONS.md`: FAA cross-check of hub tiers, buildability.json and
-metro_areas.json `needs_verification` entries, pinning Python 3.12 in CI, an
-API key + spend cap for LLM calls.
+metro_areas.json `needs_verification` entries.

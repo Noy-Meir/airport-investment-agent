@@ -102,16 +102,26 @@ decline a "just give me the number" framing.
 
 ## 5. Where AI is used
 
-The LLM selects which tool(s) to call, reads the returned envelopes, and
-writes the explanation. It does not compute, estimate, recall, or guess
-any figure — the system prompt requires every stated number to trace to a
-tool result. Separately, the tool registry enforces input safety, not
-output content: `call_tool()` never raises on bad input (unknown tool,
-invalid args, unknown airport code), returning a typed error so a
-malformed call can't crash the loop or fabricate a result — there is no
-mechanical check on the model's final text.
+The LLM is optional. With an API key configured, it selects which tool(s)
+to call, reads the returned envelopes, and writes the explanation; it does
+not compute, estimate, recall, or guess any figure — the system prompt
+requires every stated number to trace to a tool result. Without a key, or
+if the model call fails, `src/agent/respond.py` falls back to a
+deterministic rules interpreter (`src/agent/rules_router.py`):
+regex/keyword matching selects at most one tool call, and
+`src/agent/narrators.py` renders the result with fixed templates instead of
+free-text generation. A sidebar selector (Auto / rules / AI model) lets the
+user force either path; a fallback shows a one-line notice. In both modes,
+numbers always come from the same deterministic tool registry — only tool
+selection and narration differ.
 
-Not delegated to the LLM: hub-tier assignment, peer-group membership,
+The registry enforces input safety, not output content: `call_tool()`
+never raises on bad input (unknown tool, invalid args, unknown airport
+code), returning a typed error so a malformed call can't crash either path
+or fabricate a result — there is no mechanical check on the model's final
+text.
+
+Not delegated to either path: hub-tier assignment, peer-group membership,
 z-score/composite computation, unmet-demand rules, and all SQL/Socrata
 queries — pure code, with no raw user text interpolated into any query.
 
@@ -135,6 +145,12 @@ queries — pure code, with no raw user text interpolated into any query.
 - **Model chosen for cost vs. quality** — `src/agent/pricing.py` estimates
   Sonnet-class rates; `run_turn` returns an estimated cost per turn (shown
   by the CLI script, not in the UI), a few cents per question.
+- **Optional AI: rules interpreter vs. LLM** — the LLM reads more naturally
+  and handles phrasing nuance the rules interpreter can't; the rules path
+  is free, instant, and runs with no account or network access at all. The
+  rules path is intentionally narrow — a fixed set of patterns, not
+  general language understanding — and says so when it can't match a
+  question.
 
 ## 7. Known limitations
 
@@ -154,12 +170,18 @@ queries — pure code, with no raw user text interpolated into any query.
 - **Metro groupings are an analyst convention** (no `source_url` yet) and
   **hub-tier thresholds are a choice**, neither cross-checked against an
   official FAA/OMB/CBSA definition or FAA's own hub classification.
-- **Verification so far is the unit-test suite over the deterministic 
-layer plus manual review of sample questions.
+- **Verification so far is the unit-test suite over the deterministic
+  layer plus manual review of sample questions.**
+- **The rules interpreter only handles phrasing it has a pattern for** —
+  free-form questions outside those patterns fall through to a help
+  message rather than a best-effort guess, and it is English-only.
 
 ## 8. What I would do next
 
 - Cross-check hub tiers against FAA's own hub classification.
 - Research and fill in `buildability.json` / `metro_areas.json` entries
   flagged `needs_verification`, with real sources.
-- Pin Python 3.12 in CI (currently "recommended, ≥3.10 required").
+- Add forward-looking and infrastructure inputs (FAA Terminal Area
+  Forecast, runway counts, slot-controlled airports) to complement the
+  backward-looking BTS signals, and cross-check enplanements against FAA's
+  published counts.

@@ -1,16 +1,18 @@
 # Airport Investment Intelligence Agent
 
 A screening aid for US airport investment research: a deterministic scoring
-layer over real BTS and OurAirports data, paired with an LLM that selects
-tools and narrates the results. It does not compute or assert numbers
-itself, and this is not investment advice. See [DESIGN.md](DESIGN.md) for
-methodology, tradeoffs, and where AI is used.
+layer over real BTS and OurAirports data, paired with an optional LLM that
+selects tools and narrates the results. Neither path computes or asserts
+numbers itself, and this is not investment advice. See
+[DESIGN.md](DESIGN.md) for methodology, tradeoffs, and where AI is used.
 
 ## Requirements
 
 - Python 3.12 recommended (3.10+ required)
-- An Anthropic API key, created **inside a Console workspace** — a key that
-  is not scoped to a workspace returns an HTTP 400 error
+- No API key required. An Anthropic API key is optional and enables the AI
+  model; without one, the app answers with a built-in rules interpreter at
+  no cost. If you do add a key, create it **inside a Console workspace** —
+  a key that is not scoped to a workspace returns an HTTP 400 error.
 
 ## Quick start
 
@@ -20,12 +22,14 @@ cd airport-investment-agent
 python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env            # fill in ANTHROPIC_API_KEY and MODEL_NAME
+cp .env.example .env            # optional: fill in ANTHROPIC_API_KEY and MODEL_NAME
 streamlit run app.py
 ```
 
-`MODEL_NAME` is read from `.env` (the value used in development is
-`claude-sonnet-5-5`). Never commit `.env`.
+The app runs with `.env` left empty — every question is answered by the
+built-in rules interpreter, no account or network call needed. Add
+`ANTHROPIC_API_KEY` and `MODEL_NAME` to `.env` to enable the AI model
+(the value used in development is `claude-sonnet-5-5`). Never commit `.env`.
 
 If Streamlit asks for an email on first run, just press Enter.
 
@@ -44,6 +48,34 @@ Good follow-ups to try in the same conversation:
 - "Why did SNA score lower than LAX?"
 - "Compare BOS and PVD on load factor and demand/supply gap."
 
+## Answer modes
+
+A sidebar selector offers three modes:
+
+- **Auto** (default) — uses the AI model if an API key is configured,
+  otherwise the built-in rules interpreter. If the AI model call fails for
+  any reason, the app automatically falls back to the rules interpreter for
+  that turn and shows a one-line notice explaining why.
+- **Built-in rules (no AI)** — always answers with the deterministic rules
+  interpreter; no API call is ever made.
+- **AI model** — always uses the AI model (only shown when a key is
+  configured); on failure it falls back to rules with the same notice as
+  Auto.
+
+In every mode, the numbers themselves come from the same deterministic
+tools (`src/tools/registry.py`) — only the tool selection and narration
+differ between the AI model and the rules interpreter.
+
+The built-in rules interpreter matches a question to a pattern with
+regex/keyword matching, no model call. It covers the 4 sample questions
+above, ranking by region/hub tier/states, side-by-side comparisons, and
+follow-ups in the same conversation such as "the second one," "why did X
+rank above Y," and "how confident are you." It declines outcome guarantees,
+forecasts, fares/ROI/construction-cost questions, non-US airports,
+non-English text, and other free-form questions it can't map to a known
+pattern — in the last case it shows the sample questions as examples of
+what it can do.
+
 ## Voice
 
 Each assistant answer has a read-aloud button, and the chat input has a mic
@@ -55,7 +87,8 @@ Nothing is auto-submitted; you can review and edit before sending.
 ## Data
 
 The repo ships a prebuilt `data/cache.db` snapshot (about 15MB): BTS T-100
-(segment traffic), BTS On-Time Performance, and OurAirports, with data
+(airport-month and route-level traffic), BTS On-Time Performance, and
+OurAirports, with data
 through 2026-04. Every stored row carries a `source` and `fetched_at`
 stamp. To rebuild the cache from source instead (slower, requires network
 access to BTS/OurAirports):
@@ -70,11 +103,20 @@ python scripts/build_cache.py
 python -m pytest -q
 ```
 
-To run one agent turn against the real API from the command line (prints
-the answer, the tools called, and the estimated cost):
+To run one turn from the command line (prints the answer, the tools called,
+and, for the AI model, the estimated cost):
 
 ```bash
 python scripts/ask.py "How does BOS look as an investment?"
+python scripts/ask.py --rules "How does BOS look as an investment?"   # force rules, no API call
+```
+
+`scripts/ask_rules.py` runs one or more questions straight through the
+rules interpreter only, sharing one conversation state across questions so
+later arguments can be follow-ups to earlier ones:
+
+```bash
+python scripts/ask_rules.py "Which New England airports look like the best expansion candidates?" "Why did SNA score lower than LAX?"
 ```
 
 ## Project layout
@@ -86,7 +128,8 @@ src/reference  curated/derived lookups: hub tiers, regions, pax windows, buildab
 src/scoring    per-airport TTM signals, peer z-scores, composite score
 src/analysis   unmet-demand decomposition (measured/inferred/unknown)
 src/tools      the LLM-facing tool registry wrapping the layers above
-src/agent      the agent loop, config, and pricing/cost estimation
+src/agent      answer-mode selection (respond.py), AI model loop, rules
+               interpreter (rules_router.py), narration, config, pricing
 src/ui         Streamlit chat logic and voice controls
 scripts        build the data cache, and a CLI for one-off questions
 data           cached SQLite DB (shipped prebuilt), raw downloads, and reference JSON
