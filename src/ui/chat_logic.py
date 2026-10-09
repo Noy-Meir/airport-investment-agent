@@ -57,6 +57,27 @@ def _find_as_of(text, into):
             into.append(match)
 
 
+def _collect_as_of(value, into, key=None):
+    """
+    Recursively walk a (possibly nested) tool result, collecting every
+    value found under a key named "as_of" or ending in "_as_of" (e.g. the
+    per-airport entries in compare_congestion, or current_as_of/prior_as_of
+    in growth signals), plus any "ending <window>" labels embedded in
+    strings. Dedupes, preserves first-seen order.
+    """
+    if isinstance(value, dict):
+        for k, v in value.items():
+            is_as_of_key = k == "as_of" or (isinstance(k, str) and k.endswith("_as_of"))
+            if is_as_of_key and isinstance(v, str) and v not in into:
+                into.append(v)
+            _collect_as_of(v, into, key=k)
+    elif isinstance(value, list):
+        for item in value:
+            _collect_as_of(item, into, key=key)
+    elif isinstance(value, str):
+        _find_as_of(value, into)
+
+
 def summarize_envelopes(trace):
     """
     Deterministic "assumptions and data" summary for one turn, built only
@@ -97,10 +118,8 @@ def summarize_envelopes(trace):
         if source and source not in sources:
             sources.append(source)
 
-        _find_as_of(method, as_of_windows)
-        _find_as_of(source, as_of_windows)
+        _collect_as_of(result, as_of_windows)
         for c in entry_caveats:
-            _find_as_of(c, as_of_windows)
             if c not in caveats:
                 caveats.append(c)
 

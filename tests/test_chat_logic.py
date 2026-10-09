@@ -124,6 +124,84 @@ def test_summarize_envelopes_empty_trace():
     }
 
 
+def test_summarize_envelopes_finds_as_of_nested_in_compare_congestion():
+    trace = [
+        {
+            "tool": "compare_congestion",
+            "args": {"airports": ["LAX", "SNA"]},
+            "result": {
+                "result": {
+                    "airports": [
+                        {"airport": "LAX", "flights": 1000, "delayed_share_pct": 20.0, "as_of": "2024-06"},
+                        {"airport": "SNA", "flights": 500, "delayed_share_pct": 10.0, "as_of": "2024-06"},
+                    ]
+                },
+                "method": "TTM flights and delayed share per airport",
+                "caveats": [],
+                "source": "BTS OTP",
+                "confidence": "high",
+            },
+        },
+    ]
+    summary = summarize_envelopes(trace)
+    assert summary["as_of_windows"] == ["2024-06"]
+
+
+def test_summarize_envelopes_finds_as_of_in_rank_airports_style_result():
+    trace = [
+        {
+            "tool": "rank_airports",
+            "args": {"region": "New England"},
+            "result": {
+                "result": {
+                    "eligible_codes": ["BOS", "PVD"],
+                    "as_of": "2024-05",
+                    "count": 2,
+                },
+                "method": "composite score ranking",
+                "caveats": [],
+                "source": "BTS T-100",
+                "confidence": "medium",
+            },
+        },
+        {
+            "tool": "get_airport_traffic",
+            "args": {"airport": "SFO"},
+            "result": {
+                "result": {
+                    "growth_pct": 3.2,
+                    "current_as_of": "2024-06",
+                    "prior_as_of": "2023-06",
+                },
+                "method": "TTM growth",
+                "caveats": [],
+                "source": "BTS T-100",
+                "confidence": "high",
+            },
+        },
+    ]
+    summary = summarize_envelopes(trace)
+    assert summary["as_of_windows"] == ["2024-05", "2024-06", "2023-06"]
+
+
+def test_summarize_envelopes_no_as_of_found_anywhere():
+    trace = [
+        {
+            "tool": "get_buildability",
+            "args": {"airport": "LAX"},
+            "result": {
+                "result": {"slot_constrained": True},
+                "method": "curated buildability lookup",
+                "caveats": [],
+                "source": "curated",
+                "confidence": "high",
+            },
+        },
+    ]
+    summary = summarize_envelopes(trace)
+    assert summary["as_of_windows"] == []
+
+
 def test_session_usage_sums_turns_and_matches_estimate_cost():
     turns = [
         {"input_tokens": 100, "output_tokens": 50, "cache_read_input_tokens": 10, "cache_creation_input_tokens": 0},

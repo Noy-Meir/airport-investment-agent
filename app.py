@@ -81,7 +81,9 @@ def _render_assumptions_panel(trace):
     with st.expander("Assumptions and data"):
         st.caption("Built from tool outputs, not written by the model.")
         st.markdown("**Data windows**")
-        st.markdown("\n".join(f"- {w}" for w in summary["as_of_windows"]) or "- none reported")
+        st.markdown(
+            "\n".join(f"- {w}" for w in summary["as_of_windows"]) or "- not reported by the tool"
+        )
         st.markdown("**Sources**")
         st.markdown("\n".join(f"- {s}" for s in summary["sources"]) or "- none reported")
         st.markdown("**Confidence by tool**")
