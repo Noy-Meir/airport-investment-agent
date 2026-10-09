@@ -27,6 +27,115 @@ SAMPLE_QUESTIONS = [
     "What's the unmet demand at SFO, and what's driving it?",
 ]
 
+# Starter cards for the empty-state welcome grid. The first four mirror
+# SAMPLE_QUESTIONS (the assignment's four questions); the fifth is a smaller
+# bonus prompt. Kept separate from SAMPLE_QUESTIONS so existing callers/tests
+# of that list are unaffected.
+STARTER_CARDS = [
+    {
+        "icon": "\U0001F4C8",
+        "title": "New England expansion",
+        "description": "Which New England airports look like the best expansion candidates?",
+        "question": SAMPLE_QUESTIONS[0],
+    },
+    {
+        "icon": "✈️",
+        "title": "LAX vs. Santa Ana congestion",
+        "description": "How does congestion at LAX compare to Santa Ana (SNA)?",
+        "question": SAMPLE_QUESTIONS[1],
+    },
+    {
+        "icon": "\U0001F9ED",
+        "title": "Anchorage long-haul share",
+        "description": "What percent of flights out of Anchorage are long-haul?",
+        "question": SAMPLE_QUESTIONS[2],
+    },
+    {
+        "icon": "\U0001F50D",
+        "title": "SFO unmet demand",
+        "description": "What's the unmet demand at SFO, and what's driving it?",
+        "question": SAMPLE_QUESTIONS[3],
+    },
+]
+
+EXTRA_STARTER_QUESTION = "What does the FAA forecast for AUS?"
+
+EXTRA_STARTER_CARD = {
+    "icon": "\U0001F4CA",
+    "title": "FAA forecast for AUS",
+    "description": EXTRA_STARTER_QUESTION,
+    "question": EXTRA_STARTER_QUESTION,
+}
+
+ALL_STARTER_QUESTIONS = SAMPLE_QUESTIONS + [EXTRA_STARTER_QUESTION]
+
+_PILL_CONFIDENCE_CLASS = {
+    "confidence: high": "pill-confidence-high",
+    "confidence: medium": "pill-confidence-medium",
+    "confidence: low": "pill-confidence-low",
+}
+
+_ELAPSED_SEGMENT_PATTERN = re.compile(r"^\d+(\.\d+)? s$")
+
+
+def badge_line_to_pills(badge_line):
+    """
+    Splits a badge line (as produced by answer_metadata_badges) into
+    {"text", "css_class"} segments for colored-pill rendering. Pure string
+    logic -- no HTML is built here, so callers remain responsible for
+    escaping before inserting into markup.
+    """
+    if not badge_line:
+        return []
+
+    pills = []
+    for segment in badge_line.split(" · "):
+        segment = segment.strip()
+        if not segment:
+            continue
+        if segment == "rules-based":
+            css_class = "pill-mode-rules"
+        elif segment == "AI model":
+            css_class = "pill-mode-ai"
+        elif segment in _PILL_CONFIDENCE_CLASS:
+            css_class = _PILL_CONFIDENCE_CLASS[segment]
+        elif _ELAPSED_SEGMENT_PATTERN.match(segment):
+            css_class = "pill-time"
+        else:
+            css_class = "pill-default"
+        pills.append({"text": segment, "css_class": css_class})
+    return pills
+
+
+def data_source_chips():
+    """
+    Returns the data_sources_caption() content as a list of individual
+    source strings (for rendering as separate chips), e.g.
+    ["BTS T-100 (monthly, through 2026-04)", "FAA Terminal Area Forecast (actuals through 2024)", "OurAirports"].
+    Returns an empty list if the manifest cannot be read.
+    """
+    caption = data_sources_caption()
+    if not caption:
+        return []
+    prefix = "Data: "
+    body = caption[len(prefix):] if caption.startswith(prefix) else caption
+    return [part.strip() for part in body.split(" · ") if part.strip()]
+
+
+def chip_css_class(chip_text):
+    """
+    Classifies a data_source_chips() entry into a CSS tint class by which
+    publisher it names, so each source pill gets a distinct (but static,
+    pre-defined) color.
+    """
+    if "FAA" in chip_text:
+        return "chip-faa"
+    if "OurAirports" in chip_text:
+        return "chip-ourairports"
+    if "BTS" in chip_text:
+        return "chip-bts"
+    return "chip-default"
+
 _ERROR_MESSAGES = {
     "auth": "The API key was rejected. Check ANTHROPIC_API_KEY and try again.",
     "bad_request": "The model rejected this request as malformed. Try rephrasing your question.",
