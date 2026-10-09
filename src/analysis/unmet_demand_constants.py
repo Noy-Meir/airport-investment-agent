@@ -27,7 +27,7 @@ UNKNOWABLE = [
     {
         "name": "passengers_priced_or_scheduled_out",
         "why_we_cannot_know": (
-            "BTS/FAA data only records flights and passengers that actually flew -- "
+            "BTS data only records flights and passengers that actually flew -- "
             "travelers who did not fly because of fare levels or schedule availability "
             "leave no record in any source this agent reads."
         ),
@@ -54,7 +54,7 @@ UNKNOWABLE = [
         "name": "slot_gate_runway_or_off_airport_constraints",
         "why_we_cannot_know": (
             "operational capacity constraints (slot controls, gate counts, runway capacity, "
-            "surrounding land use) are not in BTS/FAA traffic data -- the only constraint "
+            "surrounding land use) are not in BTS traffic data -- the only constraint "
             "data this agent has is the curated buildability reference for a handful of "
             "named airports (data/reference/buildability.json), not a general capacity model."
         ),

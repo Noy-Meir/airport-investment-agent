@@ -45,7 +45,7 @@ The UI offers these starting points:
 Good follow-ups to try in the same conversation:
 
 - "Now re-rank that with more weight on growth and less on congestion."
-- "Why did SNA score lower than LAX?"
+- "Why did HVN rank above BTV?"
 - "Compare BOS and PVD on load factor and demand/supply gap."
 
 ## Answer modes
@@ -88,8 +88,8 @@ Nothing is auto-submitted; you can review and edit before sending.
 
 The repo ships a prebuilt `data/cache.db` snapshot (about 15MB): BTS T-100
 (airport-month and route-level traffic), BTS On-Time Performance, and
-OurAirports, with data
-through 2026-04. Every stored row carries a `source` and `fetched_at`
+OurAirports, with T-100 data through 2026-04 and OTP through 2026-07. Every
+stored row carries a `source` and `fetched_at`
 stamp. To rebuild the cache from source instead (slower, requires network
 access to BTS/OurAirports):
 
@@ -134,14 +134,15 @@ src/ui         Streamlit chat logic and voice controls
 scripts        build the data cache, and a CLI for one-off questions
 data           cached SQLite DB (shipped prebuilt), raw downloads, and reference JSON
 tests          unit tests over the deterministic layers
-docs           design decisions and scoring methodology notes
+docs           design decisions, scoring methodology notes, and example answers
 ```
 
 ## Limitations
 
 - OTP congestion coverage is partial: domestic reporting carriers only, and
-  only part of the TTM window is downloaded; low coverage is flagged in
-  caveats.
+  OTP covers 12 months through 2026-07 while T-100 ends 2026-04, so coverage
+  ratios are computed over the overlapping months only; low coverage is
+  flagged in caveats.
 - Buildability constraints are curated for a handful of airports only;
   everywhere else returns "unknown constraints," not "no constraints."
 - `demand_supply_gap` can be positive because seats were cut rather than

@@ -156,9 +156,10 @@ queries — pure code, with no raw user text interpolated into any query.
 
 - **OTP congestion coverage is partial, two ways**: domestic reporting
   carriers only (no freighters/international, ~91-97% coverage for
-  SFO/LAX/SNA/BOS but ~26% for freighter-heavy ANC), and only 9 of 12 TTM
-  months downloaded. Both are reported in caveats;
-  `compare_congestion` flags `low_coverage: true` below 50%.
+  SFO/LAX/SNA/BOS but ~26% for freighter-heavy ANC), and OTP covers 12
+  months through 2026-07 while T-100 ends 2026-04, so coverage ratios are
+  computed over the overlapping months only. Both are reported in
+  caveats; `compare_congestion` flags `low_coverage: true` below 50%.
 - **Buildability is mostly "no entry on file," not fully researched** —
   curated only for SNA/DCA/LGA/JFK/EWR; other airports return "unknown
   constraints," not "no constraints"; some existing entries are flagged
