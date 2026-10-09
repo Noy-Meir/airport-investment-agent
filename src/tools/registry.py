@@ -27,10 +27,11 @@ from src.cache.config import LONG_HAUL_THRESHOLDS_MI, VOLUME_FLOOR_PAX
 from src.analysis.unmet_demand import get_unmet_demand_decomposition
 from src.reference.buildability import get_buildability as _buildability_lookup
 from src.reference.envelope import envelope
+from src.reference.hub_tiers import compute_hub_tiers_ttm
 from src.reference.pax import pax_by_airport_ttm
 from src.reference.regions import list_new_england_airports_ttm, region_list
-from src.scoring.score import ScoringError, compare_airports, rank_airports, score_airport, sensitivity
-from src.scoring.signals import get_growth_ttm, get_load_factor_ttm
+from src.scoring.score import ScoringError, _resolve_scope, compare_airports, rank_airports, score_airport, sensitivity
+from src.scoring.signals import eligible_universe_ttm, get_growth_ttm, get_load_factor_ttm
 
 _CONF_ORDER = {"low": 0, "medium": 1, "high": 2}
 
@@ -44,6 +45,21 @@ SCOPE_SCHEMA = {
         "region": {"type": "string", "enum": ["new_england"], "description": "Named region. Only 'new_england' is defined."},
         "tier": {"type": "string", "enum": ["large", "medium", "small", "micro"], "description": "TTM hub tier."},
         "states": {"type": "array", "items": {"type": "string"}, "description": "US state codes, e.g. ['CT', 'ME']."},
+    },
+    "additionalProperties": False,
+}
+
+TRAFFIC_SCOPE_SCHEMA = {
+    "type": "object",
+    "description": (
+        "Which airports to select -- exactly one of region/tier/states/all. 'all' means every "
+        "airport above the volume floor, nationwide."
+    ),
+    "properties": {
+        "region": {"type": "string", "enum": ["new_england"], "description": "Named region. Only 'new_england' is defined."},
+        "tier": {"type": "string", "enum": ["large", "medium", "small", "micro"], "description": "TTM hub tier."},
+        "states": {"type": "array", "items": {"type": "string"}, "description": "US state codes, e.g. ['CT', 'ME']."},
+        "all": {"type": "boolean", "description": "If true, every airport above the volume floor nationwide."},
     },
     "additionalProperties": False,
 }
@@ -70,6 +86,81 @@ def _rank_airports(args, conn):
         ranked = [_trim_airport_entry(e) for e in envelope["result"]["ranked"]]
         envelope = {**envelope, "result": {**envelope["result"], "ranked": ranked}}
     return envelope
+
+
+def _resolve_traffic_scope(conn, scope):
+    """codes for rank_airports_by_traffic: region/tier/states (via src.scoring.score._resolve_scope) or {"all": true}."""
+    if isinstance(scope, dict) and len(scope) == 1 and "all" in scope:
+        if scope["all"] is not True:
+            raise ScoringError(f"'all' must be true, got {scope['all']!r}")
+        r = eligible_universe_ttm(conn)
+        if r["result"] is None:
+            return [], "all", r["caveats"], r["source"]
+        return r["result"]["eligible_codes"], "all", r["caveats"], r["source"]
+    return _resolve_scope(conn, scope, None)
+
+
+def _rank_airports_by_traffic(args, conn):
+    scope = args["scope"]
+    top_n = args.get("top_n", 10)
+    method = (
+        "rank airports in scope by TTM total_passengers -- departing passengers (enplanements, by "
+        "origin airport, connections included), NOT arrivals+departures -- descending; growth_pct is "
+        "TTM vs the prior TTM window (src/scoring/signals.get_growth_ttm); thin wrapper over "
+        "src/reference/pax.pax_by_airport_ttm, no new calculation"
+    )
+    codes, basis, scope_caveats, scope_source = _resolve_traffic_scope(conn, scope)
+    if not codes:
+        return envelope(None, method, scope_caveats, scope_source, "low")
+
+    pax_by_code, excluded, as_of = pax_by_airport_ttm(conn)
+    if as_of is None:
+        return envelope(None, method, ["cache is empty"], "no cached data", "low")
+
+    tiers = compute_hub_tiers_ttm(conn)
+    tier_by_code = {}
+    if tiers["result"] is not None:
+        for tier_name, members in tiers["result"]["tiers"].items():
+            for m in members:
+                tier_by_code[m["code"]] = tier_name
+
+    placeholders = ",".join("?" for _ in codes)
+    name_rows = conn.execute(
+        f"SELECT iata_code, name FROM ourairports WHERE iata_code IN ({placeholders})", codes,
+    ).fetchall()
+    name_by_code = {r["iata_code"]: r["name"] for r in name_rows}
+
+    caveats = list(scope_caveats)
+    if excluded:
+        caveats.append(f"excluded {excluded} month-row(s) with NULL total_passengers from the TTM sums")
+
+    entries = []
+    no_pax = []
+    for code in codes:
+        pax = pax_by_code.get(code)
+        if pax is None:
+            no_pax.append(code)
+            continue
+        growth = get_growth_ttm(conn, code)
+        entries.append({
+            "code": code,
+            "name": name_by_code.get(code),
+            "tier": tier_by_code.get(code),
+            "ttm_passengers": pax,
+            "growth_pct": growth["result"]["growth_pct"] if growth["result"] is not None else None,
+            "as_of": as_of,
+        })
+    if no_pax:
+        caveats.append(f"{len(no_pax)} airport(s) in scope have no TTM passenger data: {sorted(no_pax)}")
+
+    entries.sort(key=lambda e: (-e["ttm_passengers"], e["code"]))
+    ranked = [{"rank": i, **e} for i, e in enumerate(entries, start=1)][:top_n]
+
+    row = conn.execute(
+        "SELECT source, fetched_at FROM source_a_airport_month ORDER BY fetched_at DESC LIMIT 1"
+    ).fetchone()
+    source = f"{row['source']}, cached {row['fetched_at']}" if row else "no cached data"
+    return envelope({"scope": basis, "as_of": as_of, "ranked": ranked}, method, caveats, source, "high")
 
 
 def _score_airport(args, conn):
@@ -255,6 +346,26 @@ TOOLS = {
             "additionalProperties": False,
         },
         "fn": _rank_airports,
+    },
+    "rank_airports_by_traffic": {
+        "description": (
+            "Rank airports in a scope (region/tier/states/all) by TTM departing-passenger volume, "
+            "highest first -- not by investment attractiveness. Use this ONCE for 'biggest / busiest "
+            "/ largest' volume questions, e.g. 'what are the 10 busiest airports?' or 'biggest airport "
+            "in Texas', instead of checking airports one by one. Do NOT use for an investment "
+            "leaderboard (use rank_airports) or a single airport's traffic detail (use "
+            "get_airport_traffic)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "scope": TRAFFIC_SCOPE_SCHEMA,
+                "top_n": {"type": "integer", "description": "Max airports to return (default 10)."},
+            },
+            "required": ["scope"],
+            "additionalProperties": False,
+        },
+        "fn": _rank_airports_by_traffic,
     },
     "score_airport": {
         "description": (

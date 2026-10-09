@@ -11,7 +11,7 @@ def test_get_tool_specs_shapes():
     specs = get_tool_specs()
     names = {s["name"] for s in specs}
     assert names == {
-        "rank_airports", "score_airport", "compare_airports", "sensitivity",
+        "rank_airports", "rank_airports_by_traffic", "score_airport", "compare_airports", "sensitivity",
         "list_region_airports", "get_airport_traffic", "compare_congestion", "get_buildability",
         "get_long_haul_share", "get_unmet_demand_breakdown",
     }
@@ -215,3 +215,49 @@ def test_get_long_haul_share_unknown_airport_never_raises(fixture_conn):
 def test_get_buildability_unknown_airport_never_raises(fixture_conn):
     result = call_tool("get_buildability", {"code": "XYZ"}, conn=fixture_conn)
     assert result["error"]["type"] == "AirportNotFoundError"
+
+
+def test_rank_airports_by_traffic_runs_and_is_json_serializable(fixture_conn):
+    result = call_tool("rank_airports_by_traffic", {"scope": {"states": ["MA"]}}, conn=fixture_conn)
+    assert "error" not in result
+    assert set(result) == {"result", "method", "caveats", "source", "confidence"}
+    json.dumps(result)
+
+
+def test_rank_airports_by_traffic_scope_variants_are_json_serializable(fixture_conn):
+    for scope in ({"region": "new_england"}, {"tier": "small"}, {"states": ["MA"]}, {"all": True}):
+        result = call_tool("rank_airports_by_traffic", {"scope": scope}, conn=fixture_conn)
+        assert "error" not in result
+        json.dumps(result)
+
+
+def test_rank_airports_by_traffic_method_says_departing_passengers(fixture_conn):
+    result = call_tool("rank_airports_by_traffic", {"scope": {"all": True}}, conn=fixture_conn)
+    assert "departing passengers" in result["method"]
+    assert "enplanements" in result["method"]
+
+
+def test_rank_airports_by_traffic_bad_scope_shape_is_schema_error(fixture_conn):
+    result = call_tool("rank_airports_by_traffic", {"scope": {"region": 123}}, conn=fixture_conn)
+    assert result["error"]["type"] == "SchemaError"
+
+
+def test_rank_airports_by_traffic_empty_scope_dict_never_raises(fixture_conn):
+    result = call_tool("rank_airports_by_traffic", {"scope": {}}, conn=fixture_conn)
+    assert result["error"]["type"] == "ScoringError"
+
+
+def test_rank_airports_by_traffic_sorted_descending_and_top_n(real_conn):
+    result = call_tool("rank_airports_by_traffic", {"scope": {"all": True}, "top_n": 5}, conn=real_conn)
+    assert "error" not in result
+    ranked = result["result"]["ranked"]
+    assert len(ranked) == 5
+    pax = [e["ttm_passengers"] for e in ranked]
+    assert pax == sorted(pax, reverse=True)
+    assert [e["rank"] for e in ranked] == [1, 2, 3, 4, 5]
+
+
+def test_rank_airports_by_traffic_atl_is_busiest(real_conn):
+    result = call_tool("rank_airports_by_traffic", {"scope": {"all": True}, "top_n": 1}, conn=real_conn)
+    assert "error" not in result
+    assert result["result"]["ranked"][0]["code"] == "ATL"

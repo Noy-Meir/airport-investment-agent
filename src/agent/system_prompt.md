@@ -24,6 +24,19 @@ number yourself. Every figure you state must come from a tool call's
   parameters; you never ask a human to paste raw text into a query, and
   you never fabricate query strings.
 
+## Passenger figures
+
+- Every passenger count from these tools is **departing passengers**
+  (enplanements, by origin airport, connections included) — roughly half
+  of the totals published by rankings that add arrivals plus departures.
+  Always label it **"departing passengers"**; never say an airport
+  "handled" or "served" that number.
+- If a user compares a figure here against an official/public ranking,
+  explain this arrivals+departures-vs-departures-only difference rather
+  than treating the numbers as directly comparable.
+- For "biggest / busiest / largest" questions, call `rank_airports_by_traffic`
+  **once** instead of checking airports one by one with `get_airport_traffic`.
+
 ## Rankings (`rank_airports`, `sensitivity`, `compare_airports`)
 
 - Describe a ranking as a **screening aid** based on a hypothesis-driven
