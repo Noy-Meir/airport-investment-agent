@@ -35,7 +35,7 @@ If Streamlit asks for an email on first run, just press Enter.
 
 ## Sample questions
 
-The UI offers these starting points:
+The UI offers the first four as starting points; the fifth shows the FAA forecast context:
 
 - "Which New England airports look like the best expansion candidates?"
 - "How does congestion at LAX compare to Santa Ana (SNA)?"
@@ -46,7 +46,7 @@ The UI offers these starting points:
 Good follow-ups to try in the same conversation:
 
 - "Now re-rank that with more weight on growth and less on congestion."
-- "Why did HVN rank above BTV?"
+- "Why did HVN rank above BTV?" (after the New England question)
 - "Compare BOS and PVD on load factor and demand/supply gap."
 
 ## Answer modes
@@ -68,8 +68,8 @@ tools (`src/tools/registry.py`) — only the tool selection and narration
 differ between the AI model and the rules interpreter.
 
 The built-in rules interpreter matches a question to a pattern with
-regex/keyword matching, no model call. It covers the 5 sample questions
-above, ranking by region/hub tier/states, side-by-side comparisons, forward-
+regex/keyword matching, no model call. It covers the sample questions above,
+ranking by region/hub tier/states, side-by-side comparisons, forward-
 looking FAA TAF data, and follow-ups in the same conversation such as "the
 second one," "why did X rank above Y," and "how confident are you." It declines
 outcome guarantees, predictions beyond published FAA forecasts, fares/ROI/
@@ -119,8 +119,9 @@ python scripts/ask.py --rules "How does BOS look as an investment?"   # force ru
 rules interpreter only, sharing one conversation state across questions so
 later arguments can be follow-ups to earlier ones:
 
+
 ```bash
-python scripts/ask_rules.py "Which New England airports look like the best expansion candidates?" "Why did SNA score lower than LAX?"
+python scripts/ask_rules.py "Which New England airports look like the best expansion candidates?" "Why did HVN rank above BTV?"
 ```
 
 `python scripts/run_eval.py` runs an offline evaluation of the rules router
@@ -131,8 +132,8 @@ findings.
 ## Project layout
 
 ```
-src/cache      pre-built local SQLite over BTS and OurAirports data, with source stamps
-src/clients    HTTP clients for BTS T-100, BTS OTP, and OurAirports
+src/cache      pre-built local SQLite over BTS, FAA TAF and OurAirports data, with source stamps
+src/clients    HTTP clients for BTS T-100, BTS OTP, FAA TAF, and OurAirports (airports, runways)
 src/reference  curated/derived lookups: hub tiers, regions, pax windows, buildability
 src/scoring    per-airport TTM signals, peer z-scores, composite score
 src/analysis   unmet-demand decomposition (measured/inferred/unknown)
@@ -140,7 +141,7 @@ src/tools      the LLM-facing tool registry wrapping the layers above
 src/agent      answer-mode selection (respond.py), AI model loop, rules
                interpreter (rules_router.py), narration, config, pricing
 src/ui         Streamlit chat logic and voice controls
-scripts        build the data cache, and a CLI for one-off questions
+scripts        build the data cache, CLI for one-off questions, and the offline eval
 data           cached SQLite DB (shipped prebuilt), raw downloads, and reference JSON
 tests          unit tests over the deterministic layers
 docs           design decisions, scoring methodology notes, and example answers
@@ -158,6 +159,10 @@ docs           design decisions, scoring methodology notes, and example answers
   because demand grew — the two are arithmetically indistinguishable.
 - Metro groupings and hub-tier thresholds are analyst conventions, not
   cross-checked against an official FAA/OMB/CBSA definition.
-- Verification so far is the unit-test suite over the deterministic layer
-  plus manual review of sample questions.
+- Verification is offline only: the unit-test suite plus an evaluation
+  script (`scripts/run_eval.py`, see docs/EVALUATION.md) over the rules
+  path. The AI-model path is not evaluated offline.
 - Runs locally only; it is not deployed anywhere.
+- The FAA Terminal Area Forecast is shown as context only: it is unconstrained
+  (assumes capacity is provided), its FY2024 base year is not aligned to the
+  TTM window, and the runway count is a rough proxy, not a capacity measure.

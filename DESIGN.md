@@ -1,17 +1,16 @@
 # Design Document — Airport Investment Intelligence Agent
 
 ## 1. Goal and scope
-
 A screening aid for US airport investment research, built on public BTS
 (T-100, OTP), FAA, and OurAirports data: a deterministic scoring layer plus an
-LLM that selects tools and narrates results.
+optional LLM that selects tools and narrates results.
 
 It is explicitly **not** investment advice. The system prompt
 (`src/agent/system_prompt.md`) has the agent decline guarantees or
 legal/financial advice and present rankings as an adjustable hypothesis,
-not a verdict. Scope is US airports only; non-US airports, non-aviation
-questions, and forecasting are out of scope — there is no forecasting
-model here.
+not a verdict. Scope is US airports only; non-US airports, non-aviation questions, and
+forecasting are out of scope — this agent produces no forecast; it only
+relays the FAA's published Terminal Area Forecast as context.
 
 ## 2. Architecture
 
@@ -87,7 +86,7 @@ is lowered — never raised — for thin data or a small peer group.
 
 ## 4. Unmet demand: no single number
 
-No public BTS/OurAirports dataset directly measures unmet demand
+No public dataset used here (BTS, FAA, OurAirports) directly measures unmet demand
 (priced-out travelers, fares, diversion, physical constraints).
 `get_unmet_demand_breakdown` always returns three sections instead:
 
@@ -188,8 +187,10 @@ queries — pure code, with no raw user text interpolated into any query.
   to the TTM window used for scoring; 7 of 234 scored airports are unmatched
   in TAF (territories outside the domestic forecast, or differing code). Runway
   count from OurAirports is a rough proxy, not a capacity measure.
-- **Verification so far is the unit-test suite over the deterministic
-  layer plus manual review of sample questions.**
+- **Verification is offline only** — the unit-test suite over the
+  deterministic layer, plus an evaluation script (`scripts/run_eval.py`,
+  results in `docs/EVALUATION.md`) that replays scripted conversations
+  through the rules path. The AI-model path is not evaluated offline.
 - **The rules interpreter only handles phrasing it has a pattern for** —
   free-form questions outside those patterns fall through to a help
   message rather than a best-effort guess, and it is English-only.
@@ -201,3 +202,5 @@ queries — pure code, with no raw user text interpolated into any query.
   flagged `needs_verification`, with real sources.
 - Identify and surface slot-controlled airports, and cross-check enplanements
   against FAA's published counts.
+- Evaluate the AI-model path offline against the same cases (currently
+  only the rules path is scripted), and compare tool selection between modes.
