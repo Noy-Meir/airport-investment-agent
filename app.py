@@ -11,7 +11,6 @@ from src.cache.db import connect
 from src.ui.chat_logic import (
     SAMPLE_QUESTIONS,
     error_to_message,
-    session_usage,
     speech_text,
 )
 from src.ui.speech_component import render_speech_controls, render_voice_assets
@@ -28,8 +27,6 @@ def _init_state():
         st.session_state.agent_history = []
     if "pending_question" not in st.session_state:
         st.session_state.pending_question = None
-    if "turn_usage" not in st.session_state:
-        st.session_state.turn_usage = []
 
 
 _init_state()
@@ -52,22 +49,10 @@ with st.sidebar:
         st.session_state.messages = []
         st.session_state.agent_history = []
         st.session_state.pending_question = None
-        st.session_state.turn_usage = []
         st.rerun()
 
     st.divider()
     st.caption(f"Model: {config['model_name']}" if config else "Model: (not configured)")
-
-    st.divider()
-    st.subheader("Session usage")
-    st.caption("ESTIMATE")
-    totals = session_usage(st.session_state.turn_usage)
-    st.metric("Estimated cost", f"${totals['estimated_cost_usd']:.4f}")
-    st.caption(
-        f"Input: {totals['input_tokens']:,} · Output: {totals['output_tokens']:,} · "
-        f"Cache read: {totals['cache_read_input_tokens']:,} · "
-        f"Cache write: {totals['cache_creation_input_tokens']:,}"
-    )
 
 if config_error:
     st.error(
@@ -79,18 +64,11 @@ if config_error:
 render_voice_assets()
 
 
-def _render_turn_cost(message_or_outcome):
-    usage = message_or_outcome.get("usage")
-    if usage:
-        st.caption(f"Turn cost (ESTIMATE): ${usage['estimated_cost_usd']:.4f}")
-
-
 for idx, message in enumerate(st.session_state.messages):
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
         if message["role"] == "assistant":
             render_speech_controls(speech_text(message["content"]), key=f"speech-{idx}")
-            _render_turn_cost(message)
 
 user_text = st.chat_input("Ask about airport investment opportunities...")
 if not user_text and st.session_state.pending_question:
@@ -110,22 +88,14 @@ if user_text:
             finally:
                 conn.close()
 
-        if outcome.get("usage"):
-            st.session_state.turn_usage.append(outcome["usage"])
-
         new_key = f"speech-{len(st.session_state.messages)}"
         if outcome.get("error"):
             readable = error_to_message(outcome["error"])
             st.error(readable)
             render_speech_controls(speech_text(readable), key=new_key)
-            st.session_state.messages.append({
-                "role": "assistant", "content": readable, "usage": outcome.get("usage"),
-            })
+            st.session_state.messages.append({"role": "assistant", "content": readable})
         else:
             st.markdown(outcome["answer"])
             st.session_state.agent_history = outcome["history"]
             render_speech_controls(speech_text(outcome["answer"]), key=new_key)
-            _render_turn_cost(outcome)
-            st.session_state.messages.append({
-                "role": "assistant", "content": outcome["answer"], "usage": outcome.get("usage"),
-            })
+            st.session_state.messages.append({"role": "assistant", "content": outcome["answer"]})

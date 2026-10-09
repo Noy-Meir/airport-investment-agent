@@ -1,9 +1,7 @@
-from src.agent.pricing import estimate_cost
 from src.ui.chat_logic import (
     SAMPLE_QUESTIONS,
     SPEECH_TEXT_CAP,
     error_to_message,
-    session_usage,
     speech_text,
 )
 
@@ -27,33 +25,6 @@ def test_error_to_message_unknown_category_falls_back():
 
 def test_error_to_message_none():
     assert isinstance(error_to_message(None), str)
-
-
-def test_session_usage_sums_turns_and_matches_estimate_cost():
-    turns = [
-        {"input_tokens": 100, "output_tokens": 50, "cache_read_input_tokens": 10, "cache_creation_input_tokens": 0},
-        {"input_tokens": 200, "output_tokens": 25, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 5},
-    ]
-    totals = session_usage(turns)
-    assert totals["input_tokens"] == 300
-    assert totals["output_tokens"] == 75
-    assert totals["cache_read_input_tokens"] == 10
-    assert totals["cache_creation_input_tokens"] == 5
-    expected_cost = estimate_cost({
-        "input_tokens": 300, "output_tokens": 75,
-        "cache_read_input_tokens": 10, "cache_creation_input_tokens": 5,
-    })
-    assert totals["estimated_cost_usd"] == round(expected_cost, 6)
-    assert "cost_note" in totals
-
-
-def test_session_usage_empty_turns():
-    totals = session_usage([])
-    assert totals["input_tokens"] == 0
-    assert totals["output_tokens"] == 0
-    assert totals["cache_read_input_tokens"] == 0
-    assert totals["cache_creation_input_tokens"] == 0
-    assert totals["estimated_cost_usd"] == 0
 
 
 def test_speech_text_removes_markdown_syntax():

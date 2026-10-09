@@ -15,7 +15,7 @@ model here.
 
 ## 2. Architecture
 
-Two sources (BTS T-100 and OTP, plus OurAirports) feed a pre-built local
+Three sources (BTS T-100, BTS OTP, OurAirports) feed a pre-built local
 SQLite store (`src/cache`), every row stamped with `source` and
 `fetched_at`/`as_of`. A reference layer (`src/reference`) derives curated
 lookups — hub tiers, regions, pax windows, buildability, metro groupings.
@@ -133,8 +133,8 @@ queries — pure code, with no raw user text interpolated into any query.
   **Long-haul share** likewise has no official definition, so it's shown
   for passengers and all-flights side by side, threshold as a parameter.
 - **Model chosen for cost vs. quality** — `src/agent/pricing.py` estimates
-  Sonnet-class rates; `run_turn` reports an estimated cost per turn, a
-  few cents per question.
+  Sonnet-class rates; `run_turn` returns an estimated cost per turn (shown
+  by the CLI script, not in the UI), a few cents per question.
 
 ## 7. Known limitations
 
@@ -154,8 +154,8 @@ queries — pure code, with no raw user text interpolated into any query.
 - **Metro groupings are an analyst convention** (no `source_url` yet) and
   **hub-tier thresholds are a choice**, neither cross-checked against an
   official FAA/OMB/CBSA definition or FAA's own hub classification.
-- **Verification so far is manual review of sample questions**, not a
-  full automated evaluation suite.
+- **Verification so far is the unit-test suite over the deterministic 
+layer plus manual review of sample questions.
 
 ## 8. What I would do next
 

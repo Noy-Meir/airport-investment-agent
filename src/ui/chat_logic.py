@@ -5,8 +5,6 @@ import here so this module stays unit-testable without a running app.
 
 import re
 
-from src.agent.pricing import COST_NOTE, estimate_cost
-
 SPEECH_TEXT_CAP = 1200
 
 _TABLE_ROW_PATTERN = re.compile(r"^\s*\|.*\|\s*$", re.MULTILINE)
@@ -19,10 +17,6 @@ _MD_NUMBERED_PATTERN = re.compile(r"^\s*\d+\.\s+", re.MULTILINE)
 _MD_CODE_FENCE_PATTERN = re.compile(r"```.*?```", re.DOTALL)
 _MD_INLINE_CODE_PATTERN = re.compile(r"`([^`]*)`")
 _SENTENCE_END_PATTERN = re.compile(r"[.!?](?:\s|$)")
-
-_USAGE_KEYS = (
-    "input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens",
-)
 
 SAMPLE_QUESTIONS = [
     "Which New England airports look like the best expansion candidates?",
@@ -84,29 +78,6 @@ def speech_text(markdown):
     text = re.sub(r"\s+", " ", text).strip()
 
     return _truncate_at_sentence(text, SPEECH_TEXT_CAP)
-
-
-def session_usage(turns):
-    """
-    Cumulative token usage and estimated cost across a session.
-
-    `turns`: list of per-turn `usage` dicts as returned by
-    `run_turn` (src/agent/agent.py) -- i.e. outcome["usage"] from each
-    turn. Uses the same `estimate_cost` the agent uses, so the sidebar
-    total and the per-turn figures are computed the same way.
-    """
-    totals = {key: 0 for key in _USAGE_KEYS}
-    for usage in turns:
-        if not usage:
-            continue
-        for key in _USAGE_KEYS:
-            totals[key] += usage.get(key, 0) or 0
-
-    return {
-        **totals,
-        "estimated_cost_usd": round(estimate_cost(totals), 6),
-        "cost_note": COST_NOTE,
-    }
 
 
 def error_to_message(error):
