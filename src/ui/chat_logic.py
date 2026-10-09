@@ -13,6 +13,23 @@ _AS_OF_PATTERN = re.compile(r"(?:ending|as_of)\s+[\w-]+", re.IGNORECASE)
 
 SPEECH_TEXT_CAP = 1200
 _HEBREW_PATTERN = re.compile(r"[֐-׿]")
+
+SPEECH_LANG_OPTIONS = [
+    ("English", "en-US"),
+    ("Hebrew", "he-IL"),
+]
+DEFAULT_SPEECH_LANG_LABEL = SPEECH_LANG_OPTIONS[0][0]
+
+
+def speech_lang_code(label):
+    """Maps a mic-input language-toggle label (e.g. "Hebrew") to its
+    SpeechRecognition BCP-47 code (e.g. "he-IL"). Falls back to the
+    default (English/en-US) for an unrecognized label."""
+    for option_label, code in SPEECH_LANG_OPTIONS:
+        if option_label == label:
+            return code
+    return dict(SPEECH_LANG_OPTIONS)[DEFAULT_SPEECH_LANG_LABEL]
+
 _TABLE_ROW_PATTERN = re.compile(r"^\s*\|.*\|\s*$", re.MULTILINE)
 _TABLE_SEPARATOR_PATTERN = re.compile(r"^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?\s*$")
 _MD_LINK_PATTERN = re.compile(r"\[([^\]]*)\]\(([^)]*)\)")

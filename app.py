@@ -17,7 +17,7 @@ from src.ui.chat_logic import (
     speech_text,
     summarize_envelopes,
 )
-from src.ui.speech_component import render_speech_controls
+from src.ui.speech_component import render_mic_input, render_speech_controls
 
 st.set_page_config(page_title="Airport Investment Intelligence Agent", page_icon="✈️")
 st.title("Airport Investment Intelligence Agent")
@@ -132,6 +132,7 @@ for idx, message in enumerate(st.session_state.messages):
             )
             _render_trace_and_assumptions(message)
 
+render_mic_input(key="mic-input")
 user_text = st.chat_input("Ask about airport investment opportunities...")
 if not user_text and st.session_state.pending_question:
     user_text = st.session_state.pending_question

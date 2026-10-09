@@ -1,14 +1,31 @@
 from src.agent.pricing import estimate_cost
 from src.ui.chat_logic import (
     SAMPLE_QUESTIONS,
+    SPEECH_LANG_OPTIONS,
     SPEECH_TEXT_CAP,
     detect_speech_lang,
     error_to_message,
     format_trace,
     session_usage,
+    speech_lang_code,
     speech_text,
     summarize_envelopes,
 )
+
+
+def test_speech_lang_code_known_labels():
+    assert speech_lang_code("English") == "en-US"
+    assert speech_lang_code("Hebrew") == "he-IL"
+
+
+def test_speech_lang_code_unknown_label_falls_back_to_english():
+    assert speech_lang_code("Klingon") == "en-US"
+    assert speech_lang_code(None) == "en-US"
+
+
+def test_speech_lang_options_cover_english_and_hebrew():
+    labels = [label for label, _code in SPEECH_LANG_OPTIONS]
+    assert labels == ["English", "Hebrew"]
 
 
 def test_format_trace_shape():
