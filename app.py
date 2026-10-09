@@ -11,16 +11,14 @@ from src.cache.db import connect
 from src.ui.chat_logic import (
     SAMPLE_QUESTIONS,
     error_to_message,
-    format_trace,
     session_usage,
     speech_text,
-    summarize_envelopes,
 )
 from src.ui.speech_component import render_speech_controls, render_voice_assets
 
 st.set_page_config(page_title="Airport Investment Intelligence Agent", page_icon="✈️")
 st.title("Airport Investment Intelligence Agent")
-st.caption("A screening aid for US airports, built on public BTS/FAA/OurAirports data.")
+st.caption("A screening aid for US airports, built on public BTS and OurAirports data.")
 
 
 def _init_state():
@@ -80,43 +78,8 @@ if config_error:
 
 render_voice_assets()
 
-def _render_assumptions_panel(trace):
-    summary = summarize_envelopes(trace)
-    with st.expander("Assumptions and data"):
-        st.caption("Built from tool outputs, not written by the model.")
-        st.markdown("**Data windows**")
-        st.markdown(
-            "\n".join(f"- {w}" for w in summary["as_of_windows"]) or "- not reported by the tool"
-        )
-        st.markdown("**Sources**")
-        st.markdown("\n".join(f"- {s}" for s in summary["sources"]) or "- none reported")
-        st.markdown("**Confidence by tool**")
-        st.markdown(
-            "\n".join(f"- {t}: {c}" for t, c in summary["confidence_by_tool"].items())
-            or "- none reported"
-        )
-        st.markdown("**Methods**")
-        st.markdown(
-            "\n".join(f"- {t}: {m}" for t, m in summary["methods_by_tool"].items())
-            or "- none reported"
-        )
-        st.markdown("**Caveats**")
-        st.markdown("\n".join(f"- {c}" for c in summary["caveats"]) or "- none reported")
-        if summary["caveats_truncated"]:
-            st.caption("Caveat list truncated to the most relevant 12.")
-        if summary["failed_tools"]:
-            st.caption(f"Failed tool calls: {', '.join(summary['failed_tools'])}")
 
-
-def _render_trace_and_assumptions(message_or_outcome):
-    trace = message_or_outcome.get("trace")
-    if trace:
-        with st.expander("Tools used"):
-            for call in format_trace(trace):
-                st.markdown(f"**{call['tool']}** ({call['ms']} ms) — `{call['args_text']}`")
-                with st.expander("Raw result", expanded=False):
-                    st.json(call["result"])
-        _render_assumptions_panel(trace)
+def _render_turn_cost(message_or_outcome):
     usage = message_or_outcome.get("usage")
     if usage:
         st.caption(f"Turn cost (ESTIMATE): ${usage['estimated_cost_usd']:.4f}")
@@ -127,7 +90,7 @@ for idx, message in enumerate(st.session_state.messages):
         st.markdown(message["content"])
         if message["role"] == "assistant":
             render_speech_controls(speech_text(message["content"]), key=f"speech-{idx}")
-            _render_trace_and_assumptions(message)
+            _render_turn_cost(message)
 
 user_text = st.chat_input("Ask about airport investment opportunities...")
 if not user_text and st.session_state.pending_question:
@@ -156,15 +119,13 @@ if user_text:
             st.error(readable)
             render_speech_controls(speech_text(readable), key=new_key)
             st.session_state.messages.append({
-                "role": "assistant", "content": readable,
-                "trace": outcome.get("trace", []), "usage": outcome.get("usage"),
+                "role": "assistant", "content": readable, "usage": outcome.get("usage"),
             })
         else:
             st.markdown(outcome["answer"])
             st.session_state.agent_history = outcome["history"]
             render_speech_controls(speech_text(outcome["answer"]), key=new_key)
-            _render_trace_and_assumptions(outcome)
+            _render_turn_cost(outcome)
             st.session_state.messages.append({
-                "role": "assistant", "content": outcome["answer"],
-                "trace": outcome.get("trace", []), "usage": outcome.get("usage"),
+                "role": "assistant", "content": outcome["answer"], "usage": outcome.get("usage"),
             })

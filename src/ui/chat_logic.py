@@ -3,13 +3,9 @@ Pure display/formatting logic for the Streamlit chat UI. No streamlit
 import here so this module stays unit-testable without a running app.
 """
 
-import json
 import re
 
 from src.agent.pricing import COST_NOTE, estimate_cost
-
-CAVEATS_CAP = 12
-_AS_OF_PATTERN = re.compile(r"(?:ending|as_of)\s+[\w-]+", re.IGNORECASE)
 
 SPEECH_TEXT_CAP = 1200
 
@@ -43,108 +39,6 @@ _ERROR_MESSAGES = {
     "connection": "Couldn't connect to the model API. Check your network and try again.",
     "other": "Something went wrong talking to the model. Try again shortly.",
 }
-
-
-def format_trace(trace):
-    """
-    `trace`: list of {tool, args, result, ms} from run_turn.
-    Returns [{tool, args_text, ms, result}] for display -- args_text is a
-    compact JSON string, ms is rounded for readability.
-    """
-    formatted = []
-    for entry in trace:
-        formatted.append({
-            "tool": entry["tool"],
-            "args_text": json.dumps(entry["args"], sort_keys=True),
-            "ms": round(entry["ms"], 1),
-            "result": entry["result"],
-        })
-    return formatted
-
-
-def _find_as_of(text, into):
-    if not text:
-        return
-    for match in _AS_OF_PATTERN.findall(text):
-        if match not in into:
-            into.append(match)
-
-
-def _collect_as_of(value, into, key=None):
-    """
-    Recursively walk a (possibly nested) tool result, collecting every
-    value found under a key named "as_of" or ending in "_as_of" (e.g. the
-    per-airport entries in compare_congestion, or current_as_of/prior_as_of
-    in growth signals), plus any "ending <window>" labels embedded in
-    strings. Dedupes, preserves first-seen order.
-    """
-    if isinstance(value, dict):
-        for k, v in value.items():
-            is_as_of_key = k == "as_of" or (isinstance(k, str) and k.endswith("_as_of"))
-            if is_as_of_key and isinstance(v, str) and v not in into:
-                into.append(v)
-            _collect_as_of(v, into, key=k)
-    elif isinstance(value, list):
-        for item in value:
-            _collect_as_of(item, into, key=key)
-    elif isinstance(value, str):
-        _find_as_of(value, into)
-
-
-def summarize_envelopes(trace):
-    """
-    Deterministic "assumptions and data" summary for one turn, built only
-    from the uniform envelope fields (method, caveats, source, confidence)
-    of each tool result in `trace` -- nothing here is written or inferred
-    by the model. Tool results with an "error" key are skipped from the
-    envelope summary and recorded in `failed_tools` instead.
-
-    Returns {as_of_windows, sources, confidence_by_tool, methods_by_tool,
-    caveats, caveats_truncated, failed_tools}. `as_of_windows`, `sources`,
-    and `caveats` are deduped and order-preserving; `caveats` is capped to
-    the `CAVEATS_CAP` most relevant (the first encountered, in trace order),
-    with `caveats_truncated` set when more were dropped.
-    """
-    as_of_windows = []
-    sources = []
-    caveats = []
-    confidence_by_tool = {}
-    methods_by_tool = {}
-    failed_tools = []
-
-    for entry in trace:
-        tool = entry.get("tool")
-        result = entry.get("result")
-        if not isinstance(result, dict) or "error" in result:
-            failed_tools.append(tool)
-            continue
-
-        method = result.get("method")
-        source = result.get("source")
-        confidence = result.get("confidence")
-        entry_caveats = result.get("caveats") or []
-
-        if method:
-            methods_by_tool[tool] = method
-        if confidence:
-            confidence_by_tool[tool] = confidence
-        if source and source not in sources:
-            sources.append(source)
-
-        _collect_as_of(result, as_of_windows)
-        for c in entry_caveats:
-            if c not in caveats:
-                caveats.append(c)
-
-    return {
-        "as_of_windows": as_of_windows,
-        "sources": sources,
-        "confidence_by_tool": confidence_by_tool,
-        "methods_by_tool": methods_by_tool,
-        "caveats": caveats[:CAVEATS_CAP],
-        "caveats_truncated": len(caveats) > CAVEATS_CAP,
-        "failed_tools": failed_tools,
-    }
 
 
 def _drop_tables(text):
