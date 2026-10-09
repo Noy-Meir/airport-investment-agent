@@ -1,18 +1,21 @@
 # Airport Investment Intelligence Agent
 
 A screening aid for US airport investment research: a deterministic scoring
-layer over real BTS, FAA, and OurAirports data, paired with an optional LLM that
-selects tools and narrates the results. Neither path computes or asserts
-numbers itself, and this is not investment advice. See
-[DESIGN.md](DESIGN.md) for methodology, tradeoffs, and where AI is used.
+layer over real BTS, FAA, and OurAirports data, plus an AI agent (Claude) that
+selects tools and narrates the results. The AI agent runs when you add an
+Anthropic API key; without one, the app answers with a built-in rules
+interpreter instead. Neither path computes or asserts numbers itself, and this
+is not investment advice. See [DESIGN.md](DESIGN.md) for methodology,
+tradeoffs, and where AI is used.
 
 ## Requirements
 
 - Python 3.12 recommended (3.10+ required)
-- No API key required. An Anthropic API key is optional and enables the AI
-  model; without one, the app answers with a built-in rules interpreter at
-  no cost. If you do add a key, create it **inside a Console workspace** —
-  a key that is not scoped to a workspace returns an HTTP 400 error.
+- **Anthropic API key (to run the AI agent).** Without a key the app still
+  works: every question is answered by a built-in rules interpreter at no
+  cost, so you can try the data and scoring without an account. To use the
+  AI agent, create a key **inside a Console workspace** (a key that is not
+  scoped to a workspace returns an HTTP 400 error) and put it in `.env`.
 
 ## Quick start
 
@@ -22,14 +25,15 @@ cd airport-investment-agent
 python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env            # optional: fill in ANTHROPIC_API_KEY and MODEL_NAME
+cp .env.example .env            # add ANTHROPIC_API_KEY and MODEL_NAME here to enable the AI agent
 streamlit run app.py
 ```
 
-The app runs with `.env` left empty — every question is answered by the
-built-in rules interpreter, no account or network call needed. Add
-`ANTHROPIC_API_KEY` and `MODEL_NAME` to `.env` to enable the AI model
-(the value used in development is `claude-sonnet-5-5`). Never commit `.env`.
+To run the AI agent, set `ANTHROPIC_API_KEY` and `MODEL_NAME` in `.env`
+(the value used in development is `claude-sonnet-5-5`). The sidebar shows which
+mode answers each question; with an empty `.env` the built-in rules
+interpreter answers instead, with no account or network call needed. Never
+commit `.env`.
 
 If Streamlit asks for an email on first run, just press Enter.
 
@@ -161,8 +165,9 @@ docs           design decisions, scoring methodology notes, and example answers
   cross-checked against an official FAA/OMB/CBSA definition.
 - Verification is offline only: the unit-test suite plus an evaluation
   script (`scripts/run_eval.py`, see docs/EVALUATION.md) over the rules
-  path. The AI-model path is not evaluated offline.
+  path.
 - Runs locally only; it is not deployed anywhere.
 - The FAA Terminal Area Forecast is shown as context only: it is unconstrained
   (assumes capacity is provided), its FY2024 base year is not aligned to the
   TTM window, and the runway count is a rough proxy, not a capacity measure.
+- The AI-model path was verified manually, not by an automated evaluation, and no transcript of it is stored in this repository.
