@@ -16,7 +16,13 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.cache import db
 from src.scoring.normalize import MIN_PEER_GROUP_SIZE, Z_CLIP, robust_z_scores
 from src.scoring.score import _resolve_scope, compare_airports, rank_airports, score_airport, sensitivity
-from src.scoring.signals import compute_signals, eligible_universe_ttm, get_congestion_signal_ttm, get_peer_group_ttm
+from src.scoring.signals import (
+    compute_signals,
+    eligible_universe_ttm,
+    get_congestion_signal_ttm,
+    get_demand_supply_gap_ttm,
+    get_peer_group_ttm,
+)
 from src.scoring.weights import SENSITIVITY_WEIGHT_SETS
 from src.reference.hub_tiers import compute_hub_tiers, compute_hub_tiers_ttm
 
@@ -427,3 +433,77 @@ def test_micro_tier_peer_group_at_least_five_real_cache(real_conn):
     """(golden) The micro tier itself must be a usable peer group (src/scoring/normalize.MIN_PEER_GROUP_SIZE)."""
     tiers = compute_hub_tiers_ttm(real_conn)
     assert len(tiers["result"]["tiers"]["micro"]) >= MIN_PEER_GROUP_SIZE
+
+
+# --- gap_driven_by_seat_cuts: deterministic caveat/flag, no change to scores --
+
+def test_demand_supply_gap_flagged_when_driven_by_seat_cuts(score_fixture_conn):
+    """DDD: pax_growth=0.0 (<=0), seat_growth=-5.0 -> gap=+5.0 from a seat cut, not pax growth."""
+    r = get_demand_supply_gap_ttm(score_fixture_conn, "DDD", end_month=(2025, 12))
+    assert r["result"]["demand_supply_gap_pct"] > 0
+    assert r["result"]["passenger_growth_pct"] <= 0
+    assert r["result"]["gap_driven_by_seat_cuts"] is True
+    assert any(
+        "gap positive because seats fell" in c and "not evidence of demand growth" in c
+        for c in r["caveats"]
+    )
+
+
+def test_demand_supply_gap_not_flagged_when_driven_by_pax_growth(score_fixture_conn):
+    """AAA: pax_growth=20.0, seat_growth=10.0 -> gap=+10.0, but driven by real passenger growth."""
+    r = get_demand_supply_gap_ttm(score_fixture_conn, "AAA", end_month=(2025, 12))
+    assert r["result"]["demand_supply_gap_pct"] > 0
+    assert r["result"]["passenger_growth_pct"] > 0
+    assert r["result"]["gap_driven_by_seat_cuts"] is False
+    assert not any("not evidence of demand growth" in c for c in r["caveats"])
+
+
+def test_score_airport_exposes_gap_driven_by_seat_cuts(score_fixture_conn):
+    ddd = score_airport("DDD", conn=score_fixture_conn, end_month=(2025, 12))["result"]
+    aaa = score_airport("AAA", conn=score_fixture_conn, end_month=(2025, 12))["result"]
+    assert ddd["gap_driven_by_seat_cuts"] is True
+    assert aaa["gap_driven_by_seat_cuts"] is False
+
+
+def test_gap_driven_by_seat_cuts_flag_does_not_change_scores(score_fixture_conn):
+    """
+    The flag/caveat is additive only -- demand_supply_gap's raw value, its
+    peer-group z-score, and the composite must be identical to what the
+    formula alone (median/MAD over the 6-airport peer group, CLAUDE.md's
+    peer-tier z-scoring) produces, independent of gap_driven_by_seat_cuts.
+    """
+    # raw demand_supply_gap_pct = pax_growth_pct - seat_growth_pct, hand-computed
+    # from SCORE_FIXTURE_AIRPORTS: AAA=10, BBB=0, CCC=-10, DDD=5, EEE=-5, FFF=10.
+    # median=2.5, MAD=7.5 -> z = (raw - 2.5) / (1.4826 * 7.5), rounded to 4dp
+    # by src/scoring/normalize.py.
+    expected_z = {"AAA": 0.6745, "DDD": 0.2248}
+
+    for code, exp_z in expected_z.items():
+        r = score_airport(code, conn=score_fixture_conn, end_month=(2025, 12))["result"]
+        gap_signal = r["signals"]["demand_supply_gap"]
+        assert gap_signal["z"] == pytest.approx(exp_z, abs=1e-4)
+
+    ddd = score_airport("DDD", conn=score_fixture_conn, end_month=(2025, 12))["result"]
+    aaa = score_airport("AAA", conn=score_fixture_conn, end_month=(2025, 12))["result"]
+    assert ddd["signals"]["demand_supply_gap"]["raw"] == pytest.approx(5.0)
+    assert aaa["signals"]["demand_supply_gap"]["raw"] == pytest.approx(10.0)
+    assert ddd["composite_score"] is not None
+    assert aaa["composite_score"] is not None
+
+
+def test_rank_and_compare_expose_gap_driven_by_seat_cuts(score_fixture_conn):
+    """Visible through rank_airports/compare_airports too, not just score_airport."""
+    scope = {"tier": compute_hub_tiers_ttm(score_fixture_conn, (2025, 12))["result"]["tiers"] and next(
+        t for t, members in compute_hub_tiers_ttm(score_fixture_conn, (2025, 12))["result"]["tiers"].items()
+        if any(m["code"] == "DDD" for m in members)
+    )}
+    ranked = rank_airports(scope, conn=score_fixture_conn, end_month=(2025, 12))["result"]["ranked"]
+    by_code = {r["airport"]: r for r in ranked}
+    assert "gap_driven_by_seat_cuts" in by_code["DDD"]
+    assert by_code["DDD"]["gap_driven_by_seat_cuts"] is True
+    assert by_code["AAA"]["gap_driven_by_seat_cuts"] is False
+
+    compared = compare_airports(["DDD", "AAA"], conn=score_fixture_conn, end_month=(2025, 12))["result"]["compared"]
+    compared_by_code = {r["airport"]: r for r in compared}
+    assert compared_by_code["DDD"]["gap_driven_by_seat_cuts"] is True
+    assert compared_by_code["AAA"]["gap_driven_by_seat_cuts"] is False

@@ -34,6 +34,11 @@ number yourself. Every figure you state must come from a tool call's
 - Always show the **buildability flag** for ranked airports. If
   `get_buildability` has no entry for an airport, say explicitly
   **"no entry on file — unknown constraints"**; never say "no constraints."
+- If the **top-ranked** airport has `gap_driven_by_seat_cuts: true` or
+  negative passenger growth, say so explicitly in one short line (e.g.
+  "note: BOS's gap is driven by seat cuts, not demand growth" /
+  "note: BOS's passenger volume is shrinking") — don't let a seat-cut-driven
+  gap or declining passengers pass silently under a high rank.
 
 ## Unmet demand (`get_unmet_demand_breakdown`)
 

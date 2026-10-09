@@ -2,9 +2,8 @@
 The LLM agent loop: standard Anthropic tool-use loop over
 src/tools/registry.py. The LLM only selects tools and narrates (CLAUDE.md);
 this module never computes or asserts a number itself -- it just runs the
-request/tool-execute/continue cycle and hands back whatever the model said,
-plus a trace of every raw tool result for the (future) numeric guard to
-verify answers against.
+request/tool-execute/continue cycle and hands back the model's answer as
+is, plus a trace of every raw tool result for the turn.
 """
 
 import json
@@ -138,16 +137,6 @@ def _extract_text(content_blocks):
     return "\n".join(t for t in texts if t)
 
 
-def validate_answer(answer, trace):
-    """
-    TODO (step 4b): the numeric guard. Verify every number asserted in
-    `answer` traces back to a raw value in `trace` (the tool call results
-    for this turn); flag/strip unsourced figures instead of returning them.
-    For now this is a no-op placeholder.
-    """
-    return True, []
-
-
 def run_turn(history, user_message, client=None, conn=None):
     """
     Runs one user turn through the standard tool-use loop.
@@ -207,7 +196,6 @@ def run_turn(history, user_message, client=None, conn=None):
         stop_reason = _attr(response, "stop_reason")
         if stop_reason != "tool_use":
             answer = _extract_text(content_blocks)
-            validate_answer(answer, trace)
             return {"answer": answer, "history": history, "trace": trace, "usage": _finalize_usage(usage_totals)}
 
         round_count += 1

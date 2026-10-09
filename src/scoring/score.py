@@ -212,6 +212,17 @@ def _tiered_group_data(conn, codes, end_month):
     return out
 
 
+def _gap_driven_by_seat_cuts(signals):
+    """
+    Pass-through of the demand_supply_gap signal's own flag (see
+    src/scoring/signals.get_demand_supply_gap_ttm): True only when the raw
+    gap is positive because seats fell, not because passengers grew. None
+    when the signal itself isn't computable -- never guessed.
+    """
+    gap_result = signals["demand_supply_gap"]["result"]
+    return gap_result["gap_driven_by_seat_cuts"] if gap_result is not None else None
+
+
 def _score_one(code, entry, weights):
     """Composes one code's score from its pre-resolved tiered signals/z-scores (see _tiered_group_data)."""
     per_signal, status, caveats, composite, available = _compose(code, entry["signals"], entry["z_by_signal"], weights)
@@ -228,6 +239,7 @@ def _score_one(code, entry, weights):
         "signals": per_signal,
         "why": _why_list(per_signal, available) if status == "scored" else [],
         "buildability": _buildability_flag(code),
+        "gap_driven_by_seat_cuts": _gap_driven_by_seat_cuts(entry["signals"]),
         "peer_group": {"basis": entry["tier"], "codes": entry["peer_codes"]},
         "caveats": caveats + downgrade_reasons + entry["peer_caveats"],
         "source": "; ".join(sources) if sources else "no cached data",
