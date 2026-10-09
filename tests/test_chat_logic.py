@@ -1,4 +1,11 @@
-from src.ui.chat_logic import SAMPLE_QUESTIONS, error_to_message, format_trace
+from src.agent.pricing import estimate_cost
+from src.ui.chat_logic import (
+    SAMPLE_QUESTIONS,
+    error_to_message,
+    format_trace,
+    session_usage,
+    summarize_envelopes,
+)
 
 
 def test_format_trace_shape():
@@ -43,3 +50,102 @@ def test_error_to_message_unknown_category_falls_back():
 
 def test_error_to_message_none():
     assert isinstance(error_to_message(None), str)
+
+
+def _envelope_result(method, caveats, source, confidence):
+    return {"result": {}, "method": method, "caveats": caveats, "source": source, "confidence": confidence}
+
+
+def test_summarize_envelopes_dedupes_sources_and_caveats():
+    trace = [
+        {
+            "tool": "get_airport_traffic",
+            "args": {"airport": "SFO"},
+            "result": _envelope_result(
+                "TTM totals ending 2024-06", ["shared caveat", "traffic-only caveat"], "BTS T-100", "high",
+            ),
+        },
+        {
+            "tool": "score_airport",
+            "args": {"airport": "SFO"},
+            "result": _envelope_result(
+                "composite score ending 2024-06", ["shared caveat"], "BTS T-100", "medium",
+            ),
+        },
+    ]
+    summary = summarize_envelopes(trace)
+    assert summary["sources"] == ["BTS T-100"]
+    assert summary["caveats"] == ["shared caveat", "traffic-only caveat"]
+    assert summary["confidence_by_tool"] == {"get_airport_traffic": "high", "score_airport": "medium"}
+    assert summary["methods_by_tool"] == {
+        "get_airport_traffic": "TTM totals ending 2024-06",
+        "score_airport": "composite score ending 2024-06",
+    }
+    assert summary["as_of_windows"] == ["ending 2024-06"]
+    assert summary["caveats_truncated"] is False
+    assert summary["failed_tools"] == []
+
+
+def test_summarize_envelopes_caps_caveats_and_flags_truncation():
+    trace = [
+        {
+            "tool": "t",
+            "args": {},
+            "result": _envelope_result("m", [f"caveat {i}" for i in range(15)], "src", "low"),
+        },
+    ]
+    summary = summarize_envelopes(trace)
+    assert len(summary["caveats"]) == 12
+    assert summary["caveats"] == [f"caveat {i}" for i in range(12)]
+    assert summary["caveats_truncated"] is True
+
+
+def test_summarize_envelopes_lists_error_result_as_failed_tool():
+    trace = [
+        {"tool": "good_tool", "args": {}, "result": _envelope_result("m", [], "src", "high")},
+        {"tool": "bad_tool", "args": {}, "result": {"error": {"type": "ValueError", "message": "boom"}}},
+    ]
+    summary = summarize_envelopes(trace)
+    assert summary["failed_tools"] == ["bad_tool"]
+    assert "bad_tool" not in summary["confidence_by_tool"]
+    assert summary["sources"] == ["src"]
+
+
+def test_summarize_envelopes_empty_trace():
+    summary = summarize_envelopes([])
+    assert summary == {
+        "as_of_windows": [],
+        "sources": [],
+        "confidence_by_tool": {},
+        "methods_by_tool": {},
+        "caveats": [],
+        "caveats_truncated": False,
+        "failed_tools": [],
+    }
+
+
+def test_session_usage_sums_turns_and_matches_estimate_cost():
+    turns = [
+        {"input_tokens": 100, "output_tokens": 50, "cache_read_input_tokens": 10, "cache_creation_input_tokens": 0},
+        {"input_tokens": 200, "output_tokens": 25, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 5},
+    ]
+    totals = session_usage(turns)
+    assert totals["input_tokens"] == 300
+    assert totals["output_tokens"] == 75
+    assert totals["cache_read_input_tokens"] == 10
+    assert totals["cache_creation_input_tokens"] == 5
+    expected_cost = estimate_cost({
+        "input_tokens": 300, "output_tokens": 75,
+        "cache_read_input_tokens": 10, "cache_creation_input_tokens": 5,
+    })
+    assert totals["estimated_cost_usd"] == round(expected_cost, 6)
+    assert "cost_note" in totals
+
+
+def test_session_usage_empty_turns():
+    totals = session_usage([])
+    assert totals["input_tokens"] == 0
+    assert totals["output_tokens"] == 0
+    assert totals["cache_read_input_tokens"] == 0
+    assert totals["cache_creation_input_tokens"] == 0
+    assert totals["estimated_cost_usd"] == 0
