@@ -15,7 +15,7 @@ def test_get_tool_specs_shapes():
     assert names == {
         "rank_airports", "rank_airports_by_traffic", "score_airport", "compare_airports", "sensitivity",
         "list_region_airports", "get_airport_traffic", "compare_congestion", "get_buildability",
-        "get_long_haul_share", "get_unmet_demand_breakdown", "describe_data_sources",
+        "get_long_haul_share", "get_unmet_demand_breakdown", "get_forward_outlook", "describe_data_sources",
     }
     for s in specs:
         assert set(s) == {"name", "description", "input_schema"}
@@ -337,9 +337,73 @@ def test_describe_data_sources_runs_and_is_json_serializable(fixture_conn):
     assert "error" not in result
     assert set(result) == {"result", "method", "caveats", "source", "confidence"}
     assert result["confidence"] == "high"
-    assert len(result["result"]) == 4
+    assert len(result["result"]) == 6
     for entry in result["result"]:
         assert set(entry) == {"name", "publisher", "vintage", "access", "caveat", "url"}
+    json.dumps(result)
+
+
+def test_get_forward_outlook_rejects_empty_and_oversized_lists(fixture_conn):
+    too_few = call_tool("get_forward_outlook", {"airports": []}, conn=fixture_conn)
+    assert too_few["error"]["type"] == "SchemaError"
+    too_many = call_tool("get_forward_outlook", {"airports": ["BOS"] * 9}, conn=fixture_conn)
+    assert too_many["error"]["type"] == "SchemaError"
+
+
+def test_get_forward_outlook_unknown_code_is_typed_error(fixture_conn):
+    result = call_tool("get_forward_outlook", {"airports": ["ZZZ"]}, conn=fixture_conn)
+    assert result["error"]["type"] == "AirportNotFoundError"
+
+
+def test_get_forward_outlook_no_cached_row_returns_null_fields_and_reason(fixture_conn):
+    """Fixture db has no airport_outlook rows at all -- every field must be None plus a reason, never guessed."""
+    result = call_tool("get_forward_outlook", {"airports": ["BOS"]}, conn=fixture_conn)
+    assert "error" not in result
+    assert set(result) == {"result", "method", "caveats", "source", "confidence"}
+    entry = result["result"]["airports"][0]
+    assert entry["code"] == "BOS"
+    assert entry["faa_lid"] is None
+    assert entry["enplanements_base"] is None
+    assert entry["qualifying_runways"] is None
+    assert entry["match_note"]
+    assert result["confidence"] == "low"
+    for text in (
+        "forecast published by the FAA",
+        "unconstrained",
+        "NOT part of the composite score",
+        "FAA fiscal years run Oct-Sep",
+        "enplanements_per_runway is only a rough proxy",
+    ):
+        assert any(text in c for c in result["caveats"]), text
+    json.dumps(result)
+
+
+def test_get_forward_outlook_matched_airport(fixture_conn):
+    db.upsert_airport_outlook(
+        fixture_conn,
+        [{
+            "iata_code": "BOS", "faa_lid": "BOS", "taf_base_fy": 2024,
+            "enplanements_base": 1000.0, "enplanements_plus5": 1200.0, "enplanements_plus10": 1400.0,
+            "cagr_5y": 0.0371, "cagr_10y": 0.0341, "qualifying_runways": 4,
+            "enplanements_per_runway": 250.0, "match_note": None,
+        }],
+        "fixture TAF", "2026-01-01T00:00:00Z",
+    )
+    result = call_tool("get_forward_outlook", {"airports": ["BOS"]}, conn=fixture_conn)
+    assert "error" not in result
+    entry = result["result"]["airports"][0]
+    assert entry["faa_lid"] == "BOS"
+    assert entry["taf_base_fy"] == 2024
+    assert entry["enplanements_base"] == 1000.0
+    assert entry["match_note"] is None
+    assert result["result"]["as_of"] == 2024
+    assert result["confidence"] == "medium"
+    json.dumps(result)
+
+
+def test_get_forward_outlook_with_no_conn_opens_real_db(real_disk_db):
+    result = call_tool("get_forward_outlook", {"airports": ["TST"]})
+    assert "error" not in result
     json.dumps(result)
 
 

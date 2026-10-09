@@ -250,5 +250,29 @@
     "rules_expectation": "tool:describe_data_sources",
     "must_include": ["BTS", "T-100"],
     "must_not": ["estimated", "guessed"]
+  },
+  {
+    "id": "forward_outlook_taf_aus",
+    "question": "What does the FAA forecast for AUS look like?",
+    "expected_tools": ["get_forward_outlook"],
+    "rules_expectation": "tool:get_forward_outlook",
+    "must_include": ["FAA", "forecast", "not part of the composite score"],
+    "must_not": ["guarantee", "our own prediction"]
+  },
+  {
+    "id": "forward_outlook_runways",
+    "question": "How many runways does AUS have?",
+    "expected_tools": ["get_forward_outlook"],
+    "rules_expectation": "tool:get_forward_outlook",
+    "must_include": ["runway", "OurAirports"],
+    "must_not": ["guarantee"]
+  },
+  {
+    "id": "forward_outlook_multi_airport",
+    "question": "Show me the forward outlook for AUS and DFW.",
+    "expected_tools": ["get_forward_outlook"],
+    "rules_expectation": "tool:get_forward_outlook",
+    "must_include": ["AUS", "DFW", "FAA"],
+    "must_not": ["guarantee"]
   }
 ]

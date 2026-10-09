@@ -56,7 +56,10 @@ UNKNOWABLE = [
             "operational capacity constraints (slot controls, gate counts, runway capacity, "
             "surrounding land use) are not in BTS traffic data -- the only constraint "
             "data this agent has is the curated buildability reference for a handful of "
-            "named airports (data/reference/buildability.json), not a general capacity model."
+            "named airports (data/reference/buildability.json), not a general capacity model. "
+            "Runway counts and the FAA's own published forecast are available via "
+            "get_forward_outlook, but slot and gate capacity are still not available anywhere "
+            "in this project."
         ),
         "data_needed": "FAA facility/slot records or an airport-specific capacity study",
     },

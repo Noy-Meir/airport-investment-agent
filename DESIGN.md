@@ -3,7 +3,7 @@
 ## 1. Goal and scope
 
 A screening aid for US airport investment research, built on public BTS
-(T-100, OTP) and OurAirports data: a deterministic scoring layer plus an
+(T-100, OTP), FAA, and OurAirports data: a deterministic scoring layer plus an
 LLM that selects tools and narrates results.
 
 It is explicitly **not** investment advice. The system prompt
@@ -15,32 +15,37 @@ model here.
 
 ## 2. Architecture
 
-Three sources (BTS T-100, BTS OTP, OurAirports) feed a pre-built local
-SQLite store (`src/cache`), every row stamped with `source` and
-`fetched_at`/`as_of`. A reference layer (`src/reference`) derives curated
-lookups — hub tiers, regions, pax windows, buildability, metro groupings.
-A deterministic layer (`src/scoring`, `src/analysis`) computes TTM
-signals, peer z-scores, a composite score, and the unmet-demand
-decomposition, with no LLM involved. The tool registry wraps this as
-schema-validated, uniform-envelope tool calls that the LLM agent calls
-and narrates inside a Streamlit chat UI with read-aloud output and a mic
-button.
+Five sources (BTS T-100, BTS OTP, FAA Terminal Area Forecast, OurAirports
+airports, OurAirports runways) feed a pre-built local SQLite store (`src/cache`),
+every row stamped with `source` and `fetched_at`/`as_of`. A reference layer
+(`src/reference`) derives curated lookups — hub tiers, regions, pax windows,
+buildability, metro groupings. A deterministic layer (`src/scoring`,
+`src/analysis`) computes TTM signals, peer z-scores, a composite score, and the
+unmet-demand decomposition, with no LLM involved. FAA TAF and OurAirports runway
+data are context-only inputs to the tool layer, not part of scoring. The tool
+registry wraps this as schema-validated, uniform-envelope tool calls that the
+LLM agent calls and narrates inside a Streamlit chat UI with read-aloud output
+and a mic button.
 
 ```
-BTS T-100 / BTS OTP / OurAirports -> SQLite cache (source + fetched_at)
-                  -> reference layer (tiers, regions, buildability, metro)
-                  -> scoring + analysis (signals -> z-scores -> composite;
-                     unmet-demand measured/inferred/unknown)
-                  -> tool layer ({result, method, caveats, source, confidence})
-                  -> LLM agent (selects tools, narrates, never computes)
-                  -> Streamlit chat (app.py) + read-aloud + mic input
+BTS T-100 / BTS OTP / OurAirports / FAA TAF / OurAirports runways
+  -> SQLite cache (source + fetched_at)
+  -> reference layer (tiers, regions, buildability, metro)
+  -> scoring + analysis (signals -> z-scores -> composite;
+     unmet-demand measured/inferred/unknown)
+  -> tool layer: scoring signals + context-only FAA/runways
+     ({result, method, caveats, source, confidence})
+  -> LLM agent (selects tools, narrates, never computes)
+  -> Streamlit chat (app.py) + read-aloud + mic input
 ```
 
 ## 3. Scoring methodology
 
 Four TTM signals per airport: `growth` (passenger growth %), `load_factor`,
 `demand_supply_gap` (passenger growth % minus seat growth %), and
-`congestion` (% of departures delayed ≥15 min, from OTP).
+`congestion` (% of departures delayed ≥15 min, from OTP). Forward-looking FAA
+Terminal Area Forecast data is available via `get_forward_outlook` but is
+deliberately NOT included in the composite score.
 
 **Peer groups.** Every airport is scored against its own TTM hub tier —
 large, medium, small, or micro — never the full national universe
@@ -151,6 +156,13 @@ queries — pure code, with no raw user text interpolated into any query.
   rules path is intentionally narrow — a fixed set of patterns, not
   general language understanding — and says so when it can't match a
   question.
+- **Forward-looking TAF as context, not a scored signal** — the FAA's
+  Terminal Area Forecast is an unconstrained projection assuming capacity is
+  provided; its fiscal-year base (FY2024) is not aligned to the TTM window
+  (T-100 through 2026-04, OTP through 2026-07); no outcome data exists to
+  validate a weight or direction. `get_forward_outlook` makes the published
+  forecast available alongside historical signals, never folded into the
+  composite score.
 
 ## 7. Known limitations
 
@@ -171,6 +183,11 @@ queries — pure code, with no raw user text interpolated into any query.
 - **Metro groupings are an analyst convention** (no `source_url` yet) and
   **hub-tier thresholds are a choice**, neither cross-checked against an
   official FAA/OMB/CBSA definition or FAA's own hub classification.
+- **FAA Terminal Area Forecast is unconstrained** (assumes capacity is
+  provided); its base year (FY2024 fiscal, Oct 2023–Sep 2024) is not aligned
+  to the TTM window used for scoring; 7 of 234 scored airports are unmatched
+  in TAF (territories outside the domestic forecast, or differing code). Runway
+  count from OurAirports is a rough proxy, not a capacity measure.
 - **Verification so far is the unit-test suite over the deterministic
   layer plus manual review of sample questions.**
 - **The rules interpreter only handles phrasing it has a pattern for** —
@@ -182,7 +199,5 @@ queries — pure code, with no raw user text interpolated into any query.
 - Cross-check hub tiers against FAA's own hub classification.
 - Research and fill in `buildability.json` / `metro_areas.json` entries
   flagged `needs_verification`, with real sources.
-- Add forward-looking and infrastructure inputs (FAA Terminal Area
-  Forecast, runway counts, slot-controlled airports) to complement the
-  backward-looking BTS signals, and cross-check enplanements against FAA's
-  published counts.
+- Identify and surface slot-controlled airports, and cross-check enplanements
+  against FAA's published counts.

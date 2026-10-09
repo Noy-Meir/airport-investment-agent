@@ -926,6 +926,95 @@ def narrate_get_unmet_demand_breakdown(envelope):
 
 
 # ---------------------------------------------------------------------------
+# get_forward_outlook
+# ---------------------------------------------------------------------------
+
+def _outlook_window_sentence(as_of):
+    if as_of is None:
+        return (
+            "Data window: FAA TAF base year not available for any requested airport. FAA fiscal years "
+            "run Oct-Sep; the TAF base year is FY2024 and is not aligned to this project's TTM window."
+        )
+    return (
+        f"Data window: FAA TAF base year FY{as_of} (FAA fiscal year, Oct-Sep) -- not aligned to this "
+        "project's TTM (trailing-twelve-month) window."
+    )
+
+
+def _fmt_cagr(x):
+    """cagr_5y/cagr_10y are stored as a ratio (e.g. 0.0234 for 2.34% CAGR) -- display as a percent with 1 decimal."""
+    if x is None:
+        return "unknown"
+    return _fmt_pct1(x * 100)
+
+
+def narrate_get_forward_outlook(envelope):
+    if _is_error(envelope):
+        return _narrate_error(envelope)
+    result = envelope["result"]
+    if result is None:
+        return _no_result_message("get_forward_outlook", envelope)
+
+    airports = result.get("airports", [])
+    as_of = result.get("as_of")
+
+    lines = [
+        "FAA Terminal Area Forecast (TAF) outlook and runway counts -- context only, shown exactly as "
+        "the FAA published them. This is the FAA's own forecast, not a forecast produced by this agent, "
+        "it is unconstrained (assumes capacity is provided), and it is NOT part of the composite "
+        "investment score.",
+        "",
+    ]
+
+    if len(airports) > 1:
+        lines.extend([
+            "| Airport | FAA LID | TAF base FY | Base enplanements | +5y | +10y | CAGR 5y | CAGR 10y | "
+            "Qualifying runways | Enplanements/runway | Note |",
+            "|---|---|---|---|---|---|---|---|---|---|---|",
+        ])
+        for a in airports:
+            lines.append(
+                f"| {a.get('code')} | {a.get('faa_lid') or 'unmatched'} | "
+                f"{a.get('taf_base_fy') if a.get('taf_base_fy') is not None else 'unknown'} | "
+                f"{_fmt_num(a.get('enplanements_base'))} | {_fmt_num(a.get('enplanements_plus5'))} | "
+                f"{_fmt_num(a.get('enplanements_plus10'))} | "
+                f"{_fmt_cagr(a.get('cagr_5y'))} | {_fmt_cagr(a.get('cagr_10y'))} | "
+                f"{_fmt_num(a.get('qualifying_runways'))} | {_fmt_num(a.get('enplanements_per_runway'))} | "
+                f"{a.get('match_note') or '-'} |"
+            )
+    else:
+        a = airports[0] if airports else {}
+        code = a.get("code", "?")
+        if a.get("faa_lid") is None:
+            lines.append(
+                f"{code}: unmatched to the FAA TAF -- {a.get('match_note') or 'no reason recorded'}. "
+                f"Qualifying runways on file: {_fmt_num(a.get('qualifying_runways'))}."
+            )
+        else:
+            cagr5_s = _fmt_cagr(a.get("cagr_5y"))
+            cagr10_s = _fmt_cagr(a.get("cagr_10y"))
+            epr = a.get("enplanements_per_runway")
+            epr_s = _fmt_num(int(round(epr))) if epr is not None else "unknown"
+            lines.append(
+                f"{code}: FAA TAF base-year (FY{a.get('taf_base_fy')}) enplanements "
+                f"{_fmt_num(a.get('enplanements_base'))}, projected to {_fmt_num(a.get('enplanements_plus5'))} "
+                f"at +5y (CAGR {cagr5_s}) and {_fmt_num(a.get('enplanements_plus10'))} at +10y (CAGR {cagr10_s}). "
+                f"{_fmt_num(a.get('qualifying_runways'))} qualifying runway(s) on file, "
+                f"{epr_s} enplanements/runway (a rough proxy, not capacity)."
+            )
+
+    lines.append("")
+    lines.append(_outlook_window_sentence(as_of))
+    lines.append(_confidence_sentence(envelope["confidence"]))
+    # Fixed caveat set (always exactly these 5, never truncated by
+    # _caveats_block's cap-at-4 rule -- every caveat here is load-bearing).
+    lines.append("Caveats:\n" + "\n".join(f"- {c}" for c in envelope["caveats"]))
+    lines.append("")
+    lines.append(CLOSING_LINE)
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
 # describe_data_sources
 # ---------------------------------------------------------------------------
 
@@ -1003,6 +1092,7 @@ _NARRATORS = {
     "get_long_haul_share": narrate_get_long_haul_share,
     "get_buildability": narrate_get_buildability,
     "get_unmet_demand_breakdown": narrate_get_unmet_demand_breakdown,
+    "get_forward_outlook": narrate_get_forward_outlook,
     "describe_data_sources": narrate_describe_data_sources,
 }
 

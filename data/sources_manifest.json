@@ -50,5 +50,31 @@
     "row_count": 2036,
     "notes": "closed-type rows dropped before insert; a duplicate active iata_code fails ingest loudly rather than silently picking one.",
     "license": "public domain / open data (OurAirports terms)"
+  },
+  {
+    "id": "faa_taf_2025",
+    "name": "FAA Terminal Area Forecast (TAF)",
+    "publisher": "Federal Aviation Administration (FAA)",
+    "url": "https://taf.faa.gov/Downloads/APO100_TAF_Final_2025.zip",
+    "access": "snapshot-in-db",
+    "storage": "airport_outlook",
+    "vintage": "TAF 2025 final",
+    "fetched_at": "2026-10-09T20:10:44Z",
+    "row_count": 2036,
+    "notes": "unconstrained forecast (assumes capacity is provided), not produced by this agent; FAA fiscal years run Oct-Sep, context only, never used in scoring/ranking.",
+    "license": "US government work, public domain"
+  },
+  {
+    "id": "ourairports_runways",
+    "name": "OurAirports runways.csv",
+    "publisher": "OurAirports (community-maintained)",
+    "url": "https://davidmegginson.github.io/ourairports-data/runways.csv",
+    "access": "snapshot-in-db",
+    "storage": "airport_outlook",
+    "vintage": "current snapshot as of fetch (not a time series)",
+    "fetched_at": "2026-10-09T20:10:44Z",
+    "row_count": 2036,
+    "notes": "qualifying-runway count = open, paved runways >= 5,000 ft; community-maintained, not an FAA facility record; enplanements_per_runway is a rough proxy, not capacity.",
+    "license": "public domain / open data (OurAirports terms)"
   }
 ]

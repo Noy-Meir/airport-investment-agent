@@ -75,9 +75,12 @@ def fixture_manifest_path(tmp_path):
 
 def test_load_manifest_loads_committed_file():
     entries = load_manifest()
-    assert len(entries) == 4
+    assert len(entries) == 6
     ids = {e["id"] for e in entries}
-    assert ids == {"bts_t100_airport_month", "bts_t100_route", "bts_otp", "ourairports"}
+    assert ids == {
+        "bts_t100_airport_month", "bts_t100_route", "bts_otp", "ourairports",
+        "faa_taf_2025", "ourairports_runways",
+    }
     for e in entries:
         for field in REQUIRED_FIELDS:
             assert field in e and e[field] not in (None, ""), f"{e['id']} missing {field}"

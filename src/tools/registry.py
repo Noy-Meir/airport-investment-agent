@@ -18,6 +18,7 @@ import json
 from src.cache import db as _db
 from src.cache.accessors import (
     AirportNotFoundError,
+    get_airport_outlook,
     get_congestion_ttm,
     get_latest_t100_route_year,
     get_long_haul_share,
@@ -325,6 +326,71 @@ def _get_buildability(args, conn):
     return _buildability_lookup(code)
 
 
+_FORWARD_OUTLOOK_CAVEATS = [
+    "the TAF is a forecast published by the FAA, not a forecast produced by this agent",
+    "the TAF is unconstrained -- it assumes any necessary capacity is provided, not a prediction that "
+    "capacity will actually be built",
+    "this is context only -- it is NOT part of the composite score",
+    "FAA fiscal years run Oct-Sep; the TAF base year is FY2024, which is not aligned to this project's "
+    "TTM (trailing-twelve-month) window",
+    "enplanements = sum of the TAF category columns (departing passengers); runway count counts open, "
+    "paved runways >= 5,000 ft from community-maintained OurAirports data, and enplanements_per_runway "
+    "is only a rough proxy, not a measure of capacity",
+]
+
+
+def _get_forward_outlook(args, conn):
+    codes = args["airports"]
+    if not (1 <= len(codes) <= 8):
+        raise SchemaError(f"airports: must be a list of 1-8 IATA codes, got {len(codes)}")
+
+    entries = []
+    sources = []
+    confidences = []
+    base_fys = []
+    for code in codes:
+        validated = validate_airport_code(conn, code)
+        env = get_airport_outlook(conn, validated)
+        r = env["result"] or {}
+        if env["result"] is None:
+            match_note = "no airport_outlook row cached for this airport"
+        else:
+            match_note = next(
+                (c[len("unmatched to FAA TAF:"):].strip() for c in env["caveats"] if c.startswith("unmatched to FAA TAF:")),
+                None,
+            )
+        entries.append({
+            "code": validated,
+            "faa_lid": r.get("faa_lid"),
+            "taf_base_fy": r.get("taf_base_fy"),
+            "enplanements_base": r.get("enplanements_base"),
+            "enplanements_plus5": r.get("enplanements_plus5"),
+            "enplanements_plus10": r.get("enplanements_plus10"),
+            "cagr_5y": r.get("cagr_5y"),
+            "cagr_10y": r.get("cagr_10y"),
+            "qualifying_runways": r.get("qualifying_runways"),
+            "enplanements_per_runway": r.get("enplanements_per_runway"),
+            "match_note": match_note,
+        })
+        confidences.append(env["confidence"])
+        if env["result"] is not None:
+            sources.append(env["source"])
+        if r.get("taf_base_fy") is not None:
+            base_fys.append(r["taf_base_fy"])
+
+    as_of = max(base_fys) if base_fys else None
+    confidence = min(confidences, key=lambda c: _CONF_ORDER[c]) if confidences else "low"
+    method = (
+        "FAA TAF 2025 Enplanements (locid-keyed) + OurAirports runways.csv, matched via "
+        "local_code/iata_code (src.cache.accessors.get_airport_outlook); context only, never used in "
+        "scoring/ranking; thin wrapper, no new calculation"
+    )
+    return envelope(
+        {"airports": entries, "as_of": as_of}, method, list(_FORWARD_OUTLOOK_CAVEATS),
+        "; ".join(sorted(set(sources))) if sources else "no cached data", confidence,
+    )
+
+
 def _get_unmet_demand_breakdown(args, conn):
     return get_unmet_demand_decomposition(conn, args["code"])
 
@@ -561,6 +627,31 @@ TOOLS = {
             "additionalProperties": False,
         },
         "fn": _get_unmet_demand_breakdown,
+    },
+    "get_forward_outlook": {
+        "description": (
+            "FAA Terminal Area Forecast (TAF) enplanement projections (base year, +5y, +10y, CAGR) and "
+            "OurAirports qualifying-runway counts, for 1-8 named airports. Context only -- these are the "
+            "FAA's own published, unconstrained forecast figures (they assume any necessary capacity is "
+            "provided), and are NOT part of the composite investment score. Use when asked about the "
+            "FAA's forecast, the TAF, 'forward outlook', 'capacity outlook', or runway counts for named "
+            "airport(s). Do NOT use this to produce this agent's own prediction -- only report the FAA's "
+            "published figures as-is, and do NOT use it to answer open-ended 'what will traffic be' "
+            "questions with no named airport (there is no forecasting model in this project otherwise)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "airports": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "1-8 IATA airport codes, e.g. ['AUS'] or ['AUS', 'DFW'].",
+                },
+            },
+            "required": ["airports"],
+            "additionalProperties": False,
+        },
+        "fn": _get_forward_outlook,
     },
     "describe_data_sources": {
         "description": (

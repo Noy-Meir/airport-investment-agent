@@ -1,7 +1,7 @@
 # Airport Investment Intelligence Agent
 
 A screening aid for US airport investment research: a deterministic scoring
-layer over real BTS and OurAirports data, paired with an optional LLM that
+layer over real BTS, FAA, and OurAirports data, paired with an optional LLM that
 selects tools and narrates the results. Neither path computes or asserts
 numbers itself, and this is not investment advice. See
 [DESIGN.md](DESIGN.md) for methodology, tradeoffs, and where AI is used.
@@ -41,6 +41,7 @@ The UI offers these starting points:
 - "How does congestion at LAX compare to Santa Ana (SNA)?"
 - "What percent of flights out of Anchorage are long-haul?"
 - "What's the unmet demand at SFO, and what's driving it?"
+- "What does the FAA forecast for AUS?"
 
 Good follow-ups to try in the same conversation:
 
@@ -67,14 +68,14 @@ tools (`src/tools/registry.py`) — only the tool selection and narration
 differ between the AI model and the rules interpreter.
 
 The built-in rules interpreter matches a question to a pattern with
-regex/keyword matching, no model call. It covers the 4 sample questions
-above, ranking by region/hub tier/states, side-by-side comparisons, and
-follow-ups in the same conversation such as "the second one," "why did X
-rank above Y," and "how confident are you." It declines outcome guarantees,
-forecasts, fares/ROI/construction-cost questions, non-US airports,
-non-English text, and other free-form questions it can't map to a known
-pattern — in the last case it shows the sample questions as examples of
-what it can do.
+regex/keyword matching, no model call. It covers the 5 sample questions
+above, ranking by region/hub tier/states, side-by-side comparisons, forward-
+looking FAA TAF data, and follow-ups in the same conversation such as "the
+second one," "why did X rank above Y," and "how confident are you." It declines
+outcome guarantees, predictions beyond published FAA forecasts, fares/ROI/
+construction-cost questions, non-US airports, non-English text, and other
+free-form questions it can't map to a known pattern — in the last case it
+shows the sample questions as examples of what it can do.
 
 ## Voice
 
@@ -86,12 +87,15 @@ Nothing is auto-submitted; you can review and edit before sending.
 
 ## Data
 
-The repo ships a prebuilt `data/cache.db` snapshot (about 15MB): BTS T-100
-(airport-month and route-level traffic), BTS On-Time Performance, and
-OurAirports, with T-100 data through 2026-04 and OTP through 2026-07. Every
-stored row carries a `source` and `fetched_at`
-stamp. To rebuild the cache from source instead (slower, requires network
-access to BTS/OurAirports):
+The repo ships a prebuilt `data/cache.db` snapshot (about 16MB): BTS T-100
+(airport-month and route-level traffic), BTS On-Time Performance, FAA Terminal
+Area Forecast (enplanements through FY2024 and forecast 2025-2055), OurAirports
+airport data, and OurAirports runways. T-100 data is current through 2026-04
+and OTP through 2026-07. The `airport_outlook` table includes FAA TAF base-year
+enplanements, +5y/+10y forecasts, qualifying runway counts (open, paved, >=5,000
+ft), and a rough enplanements-per-runway proxy. Every stored row carries a
+`source` and `fetched_at` stamp. To rebuild the cache from source instead
+(slower, requires network access to BTS/OurAirports/FAA):
 
 ```bash
 python scripts/build_cache.py

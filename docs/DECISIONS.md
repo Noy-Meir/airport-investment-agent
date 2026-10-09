@@ -29,7 +29,7 @@ capacity/slot/perimeter constraints), `get_unmet_demand_breakdown`
   source, confidence}`.
 - Tier-based z-scores: `score_airport`/`get_peer_group_ttm` always compare
   an airport against its own TTM hub tier, never the full universe.
-- Absolute-gap guard: unmet-demand inference rules require the raw
+- Raw-gap condition: unmet-demand inference rules require the raw
   `demand_supply_gap_pct` to be positive, not just peer-relative z-score —
   a z can be high purely because peers' gaps are lower, even negative.
 - Unmet demand is never a single number — `get_unmet_demand_breakdown`
@@ -292,6 +292,27 @@ dataset):
    see it unwrapped.
 6. Add tests (loader/accessor + the tool through `call_tool`) and new
    `data/eval/tool_selection_cases.json` cases if a new tool was added.
+
+## FAA Terminal Area Forecast: context-only, not scored
+
+**Decision:** Integrate FAA Terminal Area Forecast (enplanements, 2025–2055)
+and OurAirports runway data via `get_forward_outlook`, but keep both outside
+the composite score.
+
+**Reasons:**
+- TAF is an unconstrained projection; it assumes capacity is built.
+- Base year (FY2024 fiscal, Oct 2023–Sep 2024) does not align to TTM window
+  (T-100 through 2026-04, OTP through 2026-07), limiting comparability.
+- No outcome data to validate a weight or direction.
+- Runway count from OurAirports is community-maintained; it's a rough proxy,
+  not a capacity measure.
+
+**Impact:** Users see published FAA forecasts alongside historical BTS signals
+via a dedicated tool (`get_forward_outlook`), enabling questions like "What does
+the FAA forecast for AUS?" — but these figures never influence the ranking or
+composite score. Matching rate: 227/234 scored airports; 7 unmatched (territories
+outside domestic TAF, or code mismatches) return null fields with a reason, never
+imputed.
 
 ## Open items
 - FAA cross-check of hub tiers (large/medium/small) against FAA's own list.

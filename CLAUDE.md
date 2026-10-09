@@ -1,14 +1,16 @@
 # Airport Investment Intelligence Agent
 
 Deloitte FDE take-home. Agent that answers airport-investment questions using
-real BTS/OurAirports data.
+real BTS/FAA/OurAirports data.
 
 Python 3.12 recommended (>=3.10 required).
 
 ## Layers
 
-- `src/cache` — cache-through SQLite over BTS/OurAirports (`accessors.py`,
+- `src/cache` — cache-through SQLite over BTS/FAA/OurAirports (`accessors.py`,
   `db.py`); every row/aggregate carries a source stamp and as-of period.
+- `src/clients` — HTTP clients for BTS T-100, BTS OTP, FAA TAF, and OurAirports
+  (`faa_taf.py`, `runways.py`).
 - `src/reference` — curated/derived lookups: hub tiers, regions, pax
   windows, buildability.json, metro_areas.json, the `envelope()` helper.
 - `src/scoring` — per-airport TTM signals (growth, load_factor,
@@ -38,6 +40,9 @@ Python 3.12 recommended (>=3.10 required).
 - `get_buildability` — curated capacity/slot/perimeter constraints.
 - `get_unmet_demand_breakdown` — measured/inferred/unknown decomposition;
   never a single unmet-demand number.
+- `get_forward_outlook` — FAA Terminal Area Forecast base-year enplanements
+  (FY2024) and +5y/+10y forecasts, runway counts (open, paved, >=5,000 ft),
+  and enplanements-per-runway proxy. Context only, not in composite score.
 - `describe_data_sources` — lists every upstream data source (name,
   publisher, vintage, access method, caveat, source URL).
 
@@ -55,6 +60,8 @@ Python 3.12 recommended (>=3.10 required).
   number itself. No unsourced facts — every claim traces to a tool `source`.
   The rules interpreter path follows the same rule by construction: it only
   selects a tool and fills a template, never computes a number.
+- Forward outlook (FAA TAF) is context only; never fold it into the composite
+  score.
 - No raw user text interpolated into queries (SQL/Socrata/etc.) — parameterize.
 - No API keys in git; no hardcoded verdicts in scripts.
 

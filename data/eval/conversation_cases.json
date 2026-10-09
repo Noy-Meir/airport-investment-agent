@@ -73,5 +73,10 @@
     "id": "conv_15_unmatched_help",
     "question": "Tell me about airport investment trends in general.",
     "rules_expectation": "help_known_limitation"
+  },
+  {
+    "id": "conv_16_forward_outlook_taf",
+    "question": "What does the FAA forecast for AUS?",
+    "rules_expectation": "tool:get_forward_outlook"
   }
 ]

@@ -86,3 +86,20 @@ def test_numbers_not_traced_still_flags_a_genuinely_invented_number():
     narration = "BOS: composite investment score 0.99."
     envelope = {"result": {"composite_score": 0.43}}
     assert numbers_not_traced(narration, envelope) == ["0.99"]
+
+
+def test_numbers_not_traced_accepts_percent_display_of_a_ratio():
+    from scripts.run_eval import numbers_not_traced
+
+    # cagr_5y is stored as a ratio (0.0234) but narrated as a percent ("2.3%").
+    narration = "AUS: CAGR 2.3%."
+    envelope = {"result": {"cagr_5y": 0.0234}}
+    assert numbers_not_traced(narration, envelope) == []
+
+
+def test_numbers_not_traced_still_flags_a_percent_with_no_matching_ratio():
+    from scripts.run_eval import numbers_not_traced
+
+    narration = "AUS: CAGR 9.9%."
+    envelope = {"result": {"cagr_5y": 0.0234}}
+    assert numbers_not_traced(narration, envelope) == ["9.9"]

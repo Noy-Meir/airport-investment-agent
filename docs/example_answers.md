@@ -153,13 +153,32 @@ Unknown (what this public data structurally cannot tell us here):
 - passengers_priced_or_scheduled_out: BTS data only records flights and passengers that actually flew -- travelers who did not fly because of fare levels or schedule availability leave no record in any source this agent reads.
 - fare_or_yield_levels: T-100/source-A reports passengers and seats, not ticket prices -- fare and yield are not present in any cached source.
 - diversion_to_other_metro_airports: each airport's traffic is reported independently; there is no cached origin-level data linking a traveler's airport choice to nearby alternatives, so we cannot tell whether suppressed traffic at one airport shows up at another.
-- slot_gate_runway_or_off_airport_constraints: operational capacity constraints (slot controls, gate counts, runway capacity, surrounding land use) are not in BTS traffic data -- the only constraint data this agent has is the curated buildability reference for a handful of named airports (data/reference/buildability.json), not a general capacity model.
+- slot_gate_runway_or_off_airport_constraints: operational capacity constraints (slot controls, gate counts, runway capacity, surrounding land use) are not in BTS traffic data -- the only constraint data this agent has is the curated buildability reference for a handful of named airports (data/reference/buildability.json), not a general capacity model. Runway counts and the FAA's own published forecast are available via get_forward_outlook, but slot and gate capacity are still not available anywhere in this project.
 - international_origin_destination_demand: cached OTP congestion data covers domestic reporting carriers only; international O&D passenger demand is not fully captured by the sources cached here.
 
 Data window: TTM (trailing twelve months), data through 2026-04.
 Confidence: medium.
 Caveats:
 - this decomposition is not a measure of unmet demand -- it is the subset of public-data facts that bear on investment demand; see 'unknown' for what it structurally cannot tell us
+
+Answered by the built-in rules interpreter (no AI model).
+```
+
+## What does the FAA forecast for AUS?
+
+```
+FAA Terminal Area Forecast (TAF) outlook and runway counts -- context only, shown exactly as the FAA published them. This is the FAA's own forecast, not a forecast produced by this agent, it is unconstrained (assumes capacity is provided), and it is NOT part of the composite investment score.
+
+AUS: FAA TAF base-year (FY2024) enplanements 10,799,331, projected to 11,932,087 at +5y (CAGR 2.0%) and 13,717,506 at +10y (CAGR 2.4%). 2 qualifying runway(s) on file, 5,399,666 enplanements/runway (a rough proxy, not capacity).
+
+Data window: FAA TAF base year FY2024 (FAA fiscal year, Oct-Sep) -- not aligned to this project's TTM (trailing-twelve-month) window.
+Confidence: medium.
+Caveats:
+- the TAF is a forecast published by the FAA, not a forecast produced by this agent
+- the TAF is unconstrained -- it assumes any necessary capacity is provided, not a prediction that capacity will actually be built
+- this is context only -- it is NOT part of the composite score
+- FAA fiscal years run Oct-Sep; the TAF base year is FY2024, which is not aligned to this project's TTM (trailing-twelve-month) window
+- enplanements = sum of the TAF category columns (departing passengers); runway count counts open, paved runways >= 5,000 ft from community-maintained OurAirports data, and enplanements_per_runway is only a rough proxy, not a measure of capacity
 
 Answered by the built-in rules interpreter (no AI model).
 ```

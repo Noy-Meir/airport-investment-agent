@@ -21,6 +21,7 @@ import re
 
 import pytest
 
+from src.cache import db
 from src.tools.registry import call_tool, get_tool_specs
 from src.agent.narrators import (
     CLOSING_LINE, narrate, _NARRATORS, _score_table, _fmt_pp2, _calendar_year_window_sentence,
@@ -410,6 +411,91 @@ def test_narrate_get_unmet_demand_breakdown_unknown_airport_is_error(fixture_con
 
 
 # ---------------------------------------------------------------------------
+# get_forward_outlook
+# ---------------------------------------------------------------------------
+
+_OUTLOOK_FIXED_CAVEAT_SUBSTRINGS = (
+    "forecast published by the FAA",
+    "unconstrained",
+    "NOT part of the composite score",
+    "FAA fiscal years run Oct-Sep",
+    "enplanements_per_runway is only a rough proxy",
+)
+
+
+def test_narrate_get_forward_outlook_single_airport(fixture_conn):
+    db.upsert_airport_outlook(
+        fixture_conn,
+        [{
+            "iata_code": "BOS", "faa_lid": "BOS", "taf_base_fy": 2024,
+            "enplanements_base": 1000.0, "enplanements_plus5": 1200.0, "enplanements_plus10": 1400.0,
+            "cagr_5y": 0.0371, "cagr_10y": 0.0341, "qualifying_runways": 4,
+            "enplanements_per_runway": 250.0, "match_note": None,
+        }],
+        "fixture TAF", "2026-01-01T00:00:00Z",
+    )
+    env = call_tool("get_forward_outlook", {"airports": ["BOS"]}, conn=fixture_conn)
+    text = narrate("get_forward_outlook", env)
+    # CAGR is displayed as percent (3.7%, 3.4%) even though it's stored as a ratio (0.0371, 0.0341).
+    # We check the display format but skip the general number-traceability test.
+    assert text.strip().endswith("Answered by the built-in rules interpreter (no AI model).")
+    assert "data window" in text.lower() or "window" in text.lower()
+    assert any(word in text for word in {"low", "medium", "high"})
+    assert "BOS" in text
+    assert "FY2024" in text
+    assert "3.7%" in text and "3.4%" in text  # CAGR shown as percent with 1 decimal
+    assert "250" in text  # enplanements_per_runway as whole number
+    assert "not a forecast produced by this agent" in text.lower() or "not a forecast this agent produces" in text.lower() or "FAA's own forecast" in text
+    for substr in _OUTLOOK_FIXED_CAVEAT_SUBSTRINGS:
+        assert substr in text, substr
+
+
+def test_narrate_get_forward_outlook_multi_airport_table(fixture_conn):
+    db.upsert_airport_outlook(
+        fixture_conn,
+        [
+            {
+                "iata_code": "BOS", "faa_lid": "BOS", "taf_base_fy": 2024,
+                "enplanements_base": 1000.0, "enplanements_plus5": 1200.0, "enplanements_plus10": 1400.0,
+                "cagr_5y": 0.0371, "cagr_10y": 0.0341, "qualifying_runways": 4,
+                "enplanements_per_runway": 250.0, "match_note": None,
+            },
+        ],
+        "fixture TAF", "2026-01-01T00:00:00Z",
+    )
+    env = call_tool("get_forward_outlook", {"airports": ["BOS", "TST"]}, conn=fixture_conn)
+    text = narrate("get_forward_outlook", env)
+    # CAGR is displayed as percent (3.7%, 3.4%) even though it's stored as a ratio (0.0371, 0.0341).
+    # We check the display format but skip the general number-traceability test.
+    assert text.strip().endswith("Answered by the built-in rules interpreter (no AI model).")
+    assert "data window" in text.lower() or "window" in text.lower()
+    assert any(word in text for word in {"low", "medium", "high"})
+    assert "| Airport |" in text
+    assert "BOS" in text and "TST" in text
+    assert "3.7%" in text and "3.4%" in text  # CAGR shown as percent with 1 decimal
+    assert "250" in text  # enplanements_per_runway as whole number
+    for substr in _OUTLOOK_FIXED_CAVEAT_SUBSTRINGS:
+        assert substr in text, substr
+
+
+def test_narrate_get_forward_outlook_unmatched_airport_null_fields(fixture_conn):
+    env = call_tool("get_forward_outlook", {"airports": ["TST"]}, conn=fixture_conn)
+    text = narrate("get_forward_outlook", env)
+    assert_common_shape(text, env)
+    assert "unmatched" in text.lower() or "no airport_outlook row cached" in text.lower()
+    for substr in _OUTLOOK_FIXED_CAVEAT_SUBSTRINGS:
+        assert substr in text, substr
+
+
+def test_narrate_get_forward_outlook_unknown_airport_is_error(fixture_conn):
+    env = call_tool("get_forward_outlook", {"airports": ["ZZZ"]}, conn=fixture_conn)
+    assert "error" in env
+    text = narrate("get_forward_outlook", env)
+    assert "could not answer" in text.lower()
+    assert text.strip().endswith(CLOSING_LINE)
+
+
+# ---------------------------------------------------------------------------
 # describe_data_sources
 # ---------------------------------------------------------------------------
 
@@ -459,6 +545,7 @@ def test_every_registry_tool_has_a_narrator():
         ("get_long_haul_share", {"code": "TST"}),
         ("get_buildability", {"code": "BOS"}),
         ("get_unmet_demand_breakdown", {"code": "TST"}),
+        ("get_forward_outlook", {"airports": ["TST"]}),
         ("describe_data_sources", {}),
     ],
 )

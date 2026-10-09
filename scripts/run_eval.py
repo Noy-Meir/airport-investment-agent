@@ -54,7 +54,7 @@ CONV_CASES_PATH = Path(__file__).resolve().parents[1] / "data/eval/conversation_
 # ---------------------------------------------------------------------------
 # Number-traceability check (b).
 #
-# Two fixes on top of a naive "every number in the text must appear
+# Three fixes on top of a naive "every number in the text must appear
 # somewhere in the envelope" check:
 #   (a) a hyphenated range like "rank 2-4" must tokenize as the two numbers
 #       2 and 4, not as a single misread "-4";
@@ -63,7 +63,14 @@ CONV_CASES_PATH = Path(__file__).resolve().parents[1] / "data/eval/conversation_
 #       envelope -- compare_airports in particular numbers rows 1, 2, ... by
 #       list position, which has no envelope field behind it at all -- so it
 #       is excluded from the check rather than treated as an invented
-#       number.
+#       number;
+#   (c) a percent-displayed value X% is accepted when the envelope carries
+#       the equivalent ratio X/100 (e.g. get_forward_outlook's CAGR is
+#       stored as a ratio like 0.0234 but narrated as "2.3%") -- same
+#       ratio<->percent display convention tests/test_narrators.py already
+#       allows. This does not loosen the check for any number with no
+#       matching source value at all (ratio or otherwise) -- those still
+#       fail.
 # ---------------------------------------------------------------------------
 
 _ISO_DATE_RE = re.compile(r"\d{4}-\d{2}(?:-\d{2})?")
@@ -141,6 +148,7 @@ def numbers_not_traced(narration, envelope):
         tol = (0.5 * (10 ** -decimals)) + 1e-9
         ok = any(
             abs(round(leaf, decimals) - tval) < 1e-6 or abs(leaf - tval) < tol
+            or abs(round(leaf * 100, decimals) - tval) < 1e-6 or abs(leaf * 100 - tval) < tol
             for leaf in leaves
         )
         if not ok:

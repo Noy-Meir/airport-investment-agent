@@ -113,6 +113,51 @@ def test_buildability():
     assert p.args["code"] == "PVD"
 
 
+def test_forward_outlook_taf_keyword():
+    p = plan("What does the FAA forecast for AUS look like?")
+    assert p.tool == "get_forward_outlook"
+    assert p.args["airports"] == ["AUS"]
+
+
+def test_forward_outlook_taf_acronym():
+    p = plan("What's the TAF for AUS?")
+    assert p.tool == "get_forward_outlook"
+    assert p.args["airports"] == ["AUS"]
+
+
+def test_forward_outlook_runways_keyword():
+    p = plan("How many runways does AUS have?")
+    assert p.tool == "get_forward_outlook"
+    assert p.args["airports"] == ["AUS"]
+
+
+def test_forward_outlook_multi_airport():
+    p = plan("Show me the forward outlook for AUS and DFW.")
+    assert p.tool == "get_forward_outlook"
+    assert p.args["airports"] == ["AUS", "DFW"]
+
+
+def test_forward_outlook_capacity_outlook_phrase():
+    p = plan("What's the capacity outlook for AUS?")
+    assert p.tool == "get_forward_outlook"
+    assert p.args["airports"] == ["AUS"]
+
+
+def test_forward_outlook_no_airport_is_unknown():
+    p = plan("What does the FAA's TAF forecast look like nationally?")
+    assert p.tool is None
+
+
+def test_forecast_request_2030_still_routes_to_traffic_not_outlook():
+    """The existing forecast_request_2030 refusal/redirect (no forecasting model in this
+    project -- report historical TTM data instead) must still hold; get_forward_outlook is
+    only reached via explicit TAF/forecast/runway/outlook phrasing, never a bare 'what will
+    traffic be' question."""
+    p = plan("What will passenger traffic at DFW look like in 2030?")
+    assert p.tool == "get_airport_traffic"
+    assert p.args["code"] == "DFW"
+
+
 def test_describe_data_sources():
     p = plan("What data sources do you use?")
     assert p.tool == "describe_data_sources"

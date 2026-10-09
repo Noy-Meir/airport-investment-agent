@@ -218,7 +218,7 @@ AIRPORT_ALIASES = {
 
 # 3-letter all-caps tokens that look like IATA codes but aren't, so they
 # don't get misread as airport mentions.
-_CODE_STOPWORDS = {"TTM", "OTP", "FAA", "BTS", "LLC", "CEO", "USA", "LA"}
+_CODE_STOPWORDS = {"TTM", "OTP", "FAA", "BTS", "LLC", "CEO", "USA", "LA", "TAF"}
 
 
 def resolve_airport_codes(message, conn=None):
@@ -269,7 +269,11 @@ _DATA_SOURCES_RE = re.compile(
     r"data sources?\b|how (recent|fresh)|where (do|does).*(data|numbers?) come from|what data (do you use|is used)",
     re.IGNORECASE,
 )
-_BUILDABILITY_RE = re.compile(r"buildability|\bconstraints?\b|\bslot[s]?\b|\bperimeter\b|\brunway\b", re.IGNORECASE)
+_BUILDABILITY_RE = re.compile(r"buildability|\bconstraints?\b|\bslot[s]?\b|\bperimeter\b", re.IGNORECASE)
+_FORWARD_OUTLOOK_RE = re.compile(
+    r"\btaf\b|faa forecast|forecast growth|\brunways?\b|forward outlook|capacity outlook",
+    re.IGNORECASE,
+)
 _SENSITIVITY_RE = re.compile(r"sensitiv|\brobust|\bweight(ed|ing)?\b", re.IGNORECASE)
 _LONG_HAUL_RE = re.compile(r"long[\s-]?haul", re.IGNORECASE)
 _UNMET_DEMAND_RE = re.compile(r"unmet demand|demand pressure|capacity pressure|\bconstrained\b", re.IGNORECASE)
@@ -562,6 +566,11 @@ def plan(message, state=None, conn=None):
 
     if _DATA_SOURCES_RE.search(text_lower):
         return Plan("describe_data_sources", "describe_data_sources", {})
+
+    if _FORWARD_OUTLOOK_RE.search(text_lower):
+        if codes:
+            return Plan("forward_outlook", "get_forward_outlook", {"airports": codes[:8]})
+        return UNKNOWN
 
     if _BUILDABILITY_RE.search(text_lower):
         if codes:
