@@ -10,11 +10,14 @@ from src.agent.config import ConfigError, load_config
 from src.cache.db import connect
 from src.ui.chat_logic import (
     SAMPLE_QUESTIONS,
+    detect_speech_lang,
     error_to_message,
     format_trace,
     session_usage,
+    speech_text,
     summarize_envelopes,
 )
+from src.ui.speech_component import render_speech_controls
 
 st.set_page_config(page_title="Airport Investment Intelligence Agent", page_icon="✈️")
 st.title("Airport Investment Intelligence Agent")
@@ -118,10 +121,15 @@ def _render_trace_and_assumptions(message_or_outcome):
         st.caption(f"Turn cost (ESTIMATE): ${usage['estimated_cost_usd']:.4f}")
 
 
-for message in st.session_state.messages:
+for idx, message in enumerate(st.session_state.messages):
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
         if message["role"] == "assistant":
+            render_speech_controls(
+                speech_text(message["content"]),
+                detect_speech_lang(message["content"]),
+                key=f"speech-{idx}",
+            )
             _render_trace_and_assumptions(message)
 
 user_text = st.chat_input("Ask about airport investment opportunities...")
@@ -145,9 +153,13 @@ if user_text:
         if outcome.get("usage"):
             st.session_state.turn_usage.append(outcome["usage"])
 
+        new_key = f"speech-{len(st.session_state.messages)}"
         if outcome.get("error"):
             readable = error_to_message(outcome["error"])
             st.error(readable)
+            render_speech_controls(
+                speech_text(readable), detect_speech_lang(readable), key=new_key
+            )
             st.session_state.messages.append({
                 "role": "assistant", "content": readable,
                 "trace": outcome.get("trace", []), "usage": outcome.get("usage"),
@@ -155,6 +167,9 @@ if user_text:
         else:
             st.markdown(outcome["answer"])
             st.session_state.agent_history = outcome["history"]
+            render_speech_controls(
+                speech_text(outcome["answer"]), detect_speech_lang(outcome["answer"]), key=new_key
+            )
             _render_trace_and_assumptions(outcome)
             st.session_state.messages.append({
                 "role": "assistant", "content": outcome["answer"],

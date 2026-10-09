@@ -11,6 +11,19 @@ from src.agent.pricing import COST_NOTE, estimate_cost
 CAVEATS_CAP = 12
 _AS_OF_PATTERN = re.compile(r"(?:ending|as_of)\s+[\w-]+", re.IGNORECASE)
 
+SPEECH_TEXT_CAP = 1200
+_HEBREW_PATTERN = re.compile(r"[֐-׿]")
+_TABLE_ROW_PATTERN = re.compile(r"^\s*\|.*\|\s*$", re.MULTILINE)
+_TABLE_SEPARATOR_PATTERN = re.compile(r"^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?\s*$")
+_MD_LINK_PATTERN = re.compile(r"\[([^\]]*)\]\(([^)]*)\)")
+_MD_HEADER_PATTERN = re.compile(r"^\s{0,3}#{1,6}\s*", re.MULTILINE)
+_MD_BOLD_ITALIC_PATTERN = re.compile(r"(\*{1,3}|_{1,3})(.+?)\1")
+_MD_BULLET_PATTERN = re.compile(r"^\s*[-*+]\s+", re.MULTILINE)
+_MD_NUMBERED_PATTERN = re.compile(r"^\s*\d+\.\s+", re.MULTILINE)
+_MD_CODE_FENCE_PATTERN = re.compile(r"```.*?```", re.DOTALL)
+_MD_INLINE_CODE_PATTERN = re.compile(r"`([^`]*)`")
+_SENTENCE_END_PATTERN = re.compile(r"[.!?](?:\s|$)")
+
 _USAGE_KEYS = (
     "input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens",
 )
@@ -132,6 +145,58 @@ def summarize_envelopes(trace):
         "caveats_truncated": len(caveats) > CAVEATS_CAP,
         "failed_tools": failed_tools,
     }
+
+
+def _drop_tables(text):
+    lines = text.split("\n")
+    kept = [
+        line for line in lines
+        if not (_TABLE_ROW_PATTERN.match(line) or _TABLE_SEPARATOR_PATTERN.match(line))
+    ]
+    return "\n".join(kept)
+
+
+def _truncate_at_sentence(text, limit):
+    if len(text) <= limit:
+        return text
+    window = text[:limit]
+    last_end = None
+    for match in _SENTENCE_END_PATTERN.finditer(window):
+        last_end = match.end()
+    if last_end:
+        return window[:last_end].rstrip()
+    return window.rstrip()
+
+
+def speech_text(markdown):
+    """
+    Convert an assistant markdown answer into plain text suitable for
+    speechSynthesis: markdown syntax stripped (links keep their visible
+    text), tables dropped entirely (unintelligible read aloud), whitespace
+    collapsed, truncated to about SPEECH_TEXT_CAP characters at a sentence
+    boundary.
+    """
+    if not markdown:
+        return ""
+
+    text = _drop_tables(markdown)
+    text = _MD_CODE_FENCE_PATTERN.sub(" ", text)
+    text = _MD_INLINE_CODE_PATTERN.sub(r"\1", text)
+    text = _MD_LINK_PATTERN.sub(r"\1", text)
+    text = _MD_HEADER_PATTERN.sub("", text)
+    text = _MD_BOLD_ITALIC_PATTERN.sub(r"\2", text)
+    text = _MD_BULLET_PATTERN.sub("", text)
+    text = _MD_NUMBERED_PATTERN.sub("", text)
+    text = re.sub(r"\s+", " ", text).strip()
+
+    return _truncate_at_sentence(text, SPEECH_TEXT_CAP)
+
+
+def detect_speech_lang(text):
+    """Returns "he-IL" if `text` contains Hebrew letters, else "en-US"."""
+    if text and _HEBREW_PATTERN.search(text):
+        return "he-IL"
+    return "en-US"
 
 
 def session_usage(turns):

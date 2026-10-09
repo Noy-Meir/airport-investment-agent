@@ -1,9 +1,12 @@
 from src.agent.pricing import estimate_cost
 from src.ui.chat_logic import (
     SAMPLE_QUESTIONS,
+    SPEECH_TEXT_CAP,
+    detect_speech_lang,
     error_to_message,
     format_trace,
     session_usage,
+    speech_text,
     summarize_envelopes,
 )
 
@@ -227,3 +230,68 @@ def test_session_usage_empty_turns():
     assert totals["cache_read_input_tokens"] == 0
     assert totals["cache_creation_input_tokens"] == 0
     assert totals["estimated_cost_usd"] == 0
+
+
+def test_speech_text_removes_markdown_syntax():
+    markdown = "# Header\n\n**Bold claim** about _SFO_ with a [link](https://example.com)."
+    text = speech_text(markdown)
+    assert "#" not in text
+    assert "*" not in text
+    assert "_" not in text
+    assert "[" not in text and "](" not in text
+    assert "Header" in text
+    assert "Bold claim" in text
+    assert "SFO" in text
+    assert "link" in text
+
+
+def test_speech_text_drops_tables():
+    markdown = (
+        "Here is a summary:\n\n"
+        "| Airport | Score |\n"
+        "| --- | --- |\n"
+        "| SFO | 8.1 |\n"
+        "| LAX | 7.4 |\n\n"
+        "That's the comparison."
+    )
+    text = speech_text(markdown)
+    assert "|" not in text
+    assert "SFO" not in text
+    assert "8.1" not in text
+    assert "Here is a summary" in text
+    assert "That's the comparison" in text
+
+
+def test_speech_text_caps_length_at_sentence_boundary():
+    sentence = "This is a filler sentence about airport capacity. "
+    markdown = sentence * 40
+    text = speech_text(markdown)
+    assert len(text) <= SPEECH_TEXT_CAP
+    assert text.endswith(".")
+
+
+def test_speech_text_preserves_hebrew():
+    markdown = "שדה התעופה בן גוריון הוא השדה המרכזי בישראל."
+    text = speech_text(markdown)
+    assert "שדה התעופה" in text
+
+
+def test_speech_text_empty():
+    assert speech_text("") == ""
+    assert speech_text(None) == ""
+
+
+def test_detect_speech_lang_hebrew():
+    assert detect_speech_lang("שלום עולם") == "he-IL"
+
+
+def test_detect_speech_lang_english():
+    assert detect_speech_lang("Hello world") == "en-US"
+
+
+def test_detect_speech_lang_mixed_defaults_hebrew():
+    assert detect_speech_lang("SFO is שדה תעופה") == "he-IL"
+
+
+def test_detect_speech_lang_empty():
+    assert detect_speech_lang("") == "en-US"
