@@ -154,6 +154,23 @@ All four functions return the uniform envelope (`src/reference/envelope.py`):
 `conn=None` opens `data/cache.db` for the call and closes it after; pass an
 existing connection to reuse one (e.g. in tests, against a fixture db).
 
+## Limitations
+
+`demand_supply_gap_pct` is `passenger growth % - seat growth %`; a positive
+value means passengers grew faster than seats, but the arithmetic can't
+distinguish *why*. It reads the same whether passengers are growing into
+flat capacity, or a carrier is cutting seats while passengers merely hold
+flat or decline. The latter is a capacity pullback, not demand pressure,
+and scoring it identically would reward the wrong airports. `src/scoring/
+signals.get_demand_supply_gap_ttm` flags this case deterministically --
+`gap_pct > 0` and `passenger_growth_pct <= 0` -- with a caveat on the
+signal envelope and a `gap_driven_by_seat_cuts` boolean surfaced on every
+per-airport score (`score_airport`/`rank_airports`/`compare_airports`,
+and through the tool layer). This is a caveat only: it does not change
+`demand_supply_gap_pct`, its z-score, its weight, or the composite score --
+an analyst or the LLM narrating the result is expected to discount the
+signal accordingly, not the scoring code.
+
 ## Definitions guessed, not specified up front
 
 - `scope` dict shape (`{"region": ...} / {"tier": ...} / {"states": [...]}`)

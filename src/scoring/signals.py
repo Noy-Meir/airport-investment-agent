@@ -144,15 +144,28 @@ def get_demand_supply_gap_ttm(conn, code, end_month=None):
         source = pax_growth["source"] if pax_growth["result"] is not None else seat_growth["source"]
         return envelope(None, method, caveats, source, "low")
 
-    gap_pct = round(
-        pax_growth["result"]["passenger_growth_pct"] - seat_growth["result"]["seat_growth_pct"], 2
-    )
+    pax_growth_pct = pax_growth["result"]["passenger_growth_pct"]
+    seat_growth_pct = seat_growth["result"]["seat_growth_pct"]
+    gap_pct = round(pax_growth_pct - seat_growth_pct, 2)
     confidence = "high" if pax_growth["confidence"] == "high" and seat_growth["confidence"] == "high" else "medium"
+
+    # Deterministic caveat: a positive gap can come from passengers growing
+    # OR from seats being cut while passengers merely held flat/fell -- the
+    # latter is not evidence of demand growth. Does not change gap_pct,
+    # z-scores, or weights -- flag only.
+    gap_driven_by_seat_cuts = gap_pct > 0 and pax_growth_pct <= 0
+    if gap_driven_by_seat_cuts:
+        caveats.append(
+            f"gap positive because seats fell {-seat_growth_pct:.2f}% while passengers changed "
+            f"{pax_growth_pct:.2f}%; this is not evidence of demand growth"
+        )
+
     return envelope(
         {
             "demand_supply_gap_pct": gap_pct, "as_of": pax_growth["result"]["current_as_of"],
-            "passenger_growth_pct": pax_growth["result"]["passenger_growth_pct"],
-            "seat_growth_pct": seat_growth["result"]["seat_growth_pct"],
+            "passenger_growth_pct": pax_growth_pct,
+            "seat_growth_pct": seat_growth_pct,
+            "gap_driven_by_seat_cuts": gap_driven_by_seat_cuts,
         },
         method, caveats, pax_growth["source"], confidence,
     )
