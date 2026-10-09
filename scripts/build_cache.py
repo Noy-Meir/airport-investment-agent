@@ -36,7 +36,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.cache import accessors, db
 from src.cache.config import CACHE_DB_PATH, RAW_DIR, REFERENCE_DIR
 from src.cache.otp_aggregate import OTPAggregateError, aggregate_otp
-from src.cache.t100_aggregate import T100AggregateError, aggregate_routes
+from src.cache.t100_aggregate import T100AggregateError, aggregate_routes, collapse_to_storage_grain
 from src.clients import ourairports, source_a
 from src.clients.ourairports import OurAirportsError
 from src.clients.source_a import SourceAError
@@ -85,9 +85,13 @@ def build_route_agg(conn, years):
         except T100AggregateError as e:
             summary.append(f"  route-level {year}: FAILED -- {e}")
             continue
+        collapsed = collapse_to_storage_grain(agg)
         fetched_at = source_a.fetched_at_stamp()
-        db.upsert_route_agg(conn, agg, "BTS T-100 Segment (All Carriers), route level (FMG)", fetched_at)
-        summary.append(f"  route-level {year}: {len(agg):,} (origin,dest,class,carrier,month) combos from {zip_path}")
+        db.upsert_route_agg(conn, collapsed, "BTS T-100 Segment (All Carriers), route level (FMG)", fetched_at)
+        summary.append(
+            f"  route-level {year}: {len(collapsed):,} (origin,dest,class) combos "
+            f"(from {len(agg):,} origin,dest,class,carrier,month combos) from {zip_path}"
+        )
         if missing_distance["rows"]:
             summary.append(
                 f"  route-level {year}: {missing_distance['rows']:,} raw rows with missing DISTANCE "
@@ -298,7 +302,9 @@ def main():
     parser.add_argument(
         "--route-years", nargs="+", type=int, default=None,
         help="calendar years to aggregate from data/raw/t100_segment_all_carrier_<year>.zip "
-             "(default: every such file already present in data/raw/)",
+             "(default: only the latest year present in data/raw/ -- get_long_haul_share, the "
+             "only consumer of t100_route_agg, always reads MAX(year), so older years are "
+             "never used; pass explicit years to store more)",
     )
     parser.add_argument(
         "--otp-months", nargs="+", default=None,
@@ -315,7 +321,10 @@ def main():
     route_years = args.route_years
     if route_years is None:
         found = glob.glob(os.path.join(RAW_DIR, "t100_segment_all_carrier_*.zip"))
-        route_years = sorted(int(os.path.basename(p).rsplit("_", 1)[1].split(".")[0]) for p in found)
+        all_route_years = sorted(int(os.path.basename(p).rsplit("_", 1)[1].split(".")[0]) for p in found)
+        # get_long_haul_share always reads MAX(year) in t100_route_agg, so only the
+        # latest year found is ever reachable -- don't store/download older ones by default.
+        route_years = all_route_years[-1:]
 
     if args.otp_months is None:
         found = glob.glob(os.path.join(RAW_DIR, "otp_*.zip"))

@@ -15,6 +15,7 @@ crash the agent loop.
 
 import json
 
+from src.cache import db as _db
 from src.cache.accessors import (
     AirportNotFoundError,
     get_congestion_ttm,
@@ -603,8 +604,17 @@ def call_tool(name, args, conn=None):
     {"error": {"type", "message"}} instead.
 
     `conn`: optional existing db connection (e.g. a test fixture db). If
-    omitted, the underlying scoring call opens/closes data/cache.db itself.
+    omitted, call_tool opens data/cache.db itself for the duration of this
+    call and closes it afterwards -- every tool fn below takes `conn` as a
+    real connection, not an optional one (only src/scoring/score.py's
+    rank_airports/score_airport/compare_airports/sensitivity have their own
+    fallback via _open_conn; the rest, e.g. get_long_haul_share,
+    get_airport_traffic, call conn.execute directly and would raise
+    AttributeError on a None conn without this).
     """
+    owns_conn = conn is None
+    if owns_conn:
+        conn = _db.connect()
     try:
         if name not in TOOLS:
             return {"error": {"type": "UnknownToolError", "message": f"no such tool {name!r}; known tools: {sorted(TOOLS)}"}}
@@ -623,3 +633,6 @@ def call_tool(name, args, conn=None):
         return {"error": {"type": "ScoringError", "message": str(e)}}
     except Exception as e:
         return {"error": {"type": type(e).__name__, "message": str(e)}}
+    finally:
+        if owns_conn:
+            conn.close()

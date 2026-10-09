@@ -85,6 +85,29 @@ def aggregate_routes(zip_path):
     return agg, {"rows": missing_distance_rows, "departures_performed": missing_distance_departures}
 
 
+def collapse_to_storage_grain(agg):
+    """
+    Collapses the (year, month, origin, dest, class, carrier) aggregate
+    returned by aggregate_routes down to (year, origin, dest, class) --
+    the grain src.cache.accessors.get_long_haul_share actually reads
+    (it filters by origin/year/class and never selects month or carrier).
+    departures_performed is summed across months and carriers; distance is
+    kept as the max non-null value seen for the key (same max-guards-a-
+    rare-bad-zero-row rule as aggregate_routes -- distance is fixed per
+    route). seats/passengers are dropped -- no accessor reads them.
+    Returns a dict keyed by (year, origin, dest, class) ->
+    {"departures_performed": float, "distance": float|None}.
+    """
+    collapsed = {}
+    for (year, _month, origin, dest, cls, _carrier), v in agg.items():
+        key = (year, origin, dest, cls)
+        entry = collapsed.setdefault(key, {"departures_performed": 0.0, "distance": None})
+        entry["departures_performed"] += v["departures_performed"]
+        if v["distance"] is not None:
+            entry["distance"] = v["distance"] if entry["distance"] is None else max(entry["distance"], v["distance"])
+    return collapsed
+
+
 def long_haul_share_by_class_group(agg, origin, thresholds, class_group):
     """
     Pure function over an already-aggregated dict (as returned by the agg

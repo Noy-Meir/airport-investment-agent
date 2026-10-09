@@ -61,10 +61,10 @@ def build(path=FIXTURE_DB_PATH):
     db.upsert_source_a_rows(conn, source_a_rows, SOURCE, FETCHED_AT)
 
     route_agg = {
-        (2025, 1, "TST", "AAA", "F", "XX"): {"departures_performed": 5.0, "seats": 50.0, "passengers": 40.0, "distance": 2500.0},
-        (2025, 1, "TST", "BBB", "F", "XX"): {"departures_performed": 5.0, "seats": 50.0, "passengers": 40.0, "distance": 1000.0},
-        (2025, 1, "TST", "TST", "L", "XX"): {"departures_performed": 3.0, "seats": 10.0, "passengers": 0.0, "distance": 0.0},
-        (2025, 1, "TST", "CCC", "F", "XX"): {"departures_performed": 2.0, "seats": 20.0, "passengers": 0.0, "distance": None},
+        (2025, "TST", "AAA", "F"): {"departures_performed": 5.0, "distance": 2500.0},
+        (2025, "TST", "BBB", "F"): {"departures_performed": 5.0, "distance": 1000.0},
+        (2025, "TST", "TST", "L"): {"departures_performed": 3.0, "distance": 0.0},
+        (2025, "TST", "CCC", "F"): {"departures_performed": 2.0, "distance": None},
     }
     db.upsert_route_agg(conn, route_agg, "fixture route-level", FETCHED_AT)
 

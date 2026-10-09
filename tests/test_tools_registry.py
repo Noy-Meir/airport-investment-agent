@@ -2,7 +2,9 @@ import json
 
 import pytest
 
+from src.cache import db
 from src.tools.registry import TOOLS, call_tool, get_tool_specs
+from tests.fixtures.make_fixture_db import build as build_fixture_db
 
 SCOPE = {"region": "new_england"}
 
@@ -261,3 +263,70 @@ def test_rank_airports_by_traffic_atl_is_busiest(real_conn):
     result = call_tool("rank_airports_by_traffic", {"scope": {"all": True}, "top_n": 1}, conn=real_conn)
     assert "error" not in result
     assert result["result"]["ranked"][0]["code"] == "ATL"
+
+
+# --- regression: call_tool(conn=None) must open its own connection ---------
+#
+# Bug: tool fns that call accessors.py directly (get_long_haul_share,
+# get_airport_traffic, compare_congestion, get_unmet_demand_breakdown, ...)
+# never opened a connection themselves when conn is None -- only
+# src/scoring/score.py's rank_airports/score_airport/compare_airports/
+# sensitivity have that fallback (_open_conn). scripts/ask.py calls
+# run_turn([], question) with no conn, so any real `python scripts/ask.py`
+# run that reached one of the unguarded tools raised
+# "'NoneType' object has no attribute 'execute'" from validate_airport_code.
+# Pre-existing since each tool was added (confirmed via git history), not
+# introduced by the t100_route_agg slimming. Fixed by having call_tool()
+# itself open/close data/cache.db when conn is None, so every tool fn always
+# receives a real connection. fixture_conn (an injected connection) can't
+# catch this class of bug -- it never exercises the conn=None path -- so
+# these tests build a real on-disk SQLite db (same schema/builder as the
+# fixture) and point src.cache.db.connect's default at it.
+
+@pytest.fixture
+def real_disk_db(tmp_path, monkeypatch):
+    """
+    A real on-disk SQLite db, built with the same builder used for
+    tests/fixtures/fixture_cache.db, with src.cache.db.connect's default
+    db_path repointed at it -- so call_tool(..., conn=None) (no connection
+    injected) opens *this* file instead of the real data/cache.db.
+    """
+    db_path = str(tmp_path / "regression_cache.db")
+    build_fixture_db(path=db_path)
+    monkeypatch.setattr(db.connect, "__defaults__", (db_path,))
+    return db_path
+
+
+def test_get_long_haul_share_with_no_conn_opens_real_db(real_disk_db):
+    result = call_tool("get_long_haul_share", {"code": "TST"})
+    assert "error" not in result
+    assert set(result) == {"result", "method", "caveats", "source", "confidence"}
+    json.dumps(result)
+
+
+def test_get_airport_traffic_with_no_conn_opens_real_db(real_disk_db):
+    result = call_tool("get_airport_traffic", {"code": "TST"})
+    assert "error" not in result
+    assert set(result) == {"result", "method", "caveats", "source", "confidence"}
+    json.dumps(result)
+
+
+def test_compare_congestion_with_no_conn_opens_real_db(real_disk_db):
+    result = call_tool("compare_congestion", {"codes": ["TST"]})
+    assert "error" not in result
+    assert set(result) == {"result", "method", "caveats", "source", "confidence"}
+    json.dumps(result)
+
+
+def test_get_unmet_demand_breakdown_with_no_conn_opens_real_db(real_disk_db):
+    result = call_tool("get_unmet_demand_breakdown", {"code": "TST"})
+    assert "error" not in result
+    assert set(result) == {"result", "method", "caveats", "source", "confidence"}
+    json.dumps(result)
+
+
+def test_rank_airports_with_no_conn_still_works(real_disk_db):
+    """score.py's own _open_conn fallback already covered this path -- guard against a regression there too."""
+    result = call_tool("rank_airports", {"scope": SCOPE, "top_n": 5})
+    assert "error" not in result
+    json.dumps(result)

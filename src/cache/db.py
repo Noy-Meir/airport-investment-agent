@@ -36,20 +36,21 @@ CREATE TABLE IF NOT EXISTS source_a_airport_month (
     PRIMARY KEY (origin_airport_code, year, month)
 );
 
+-- Grain is (year, origin, dest, class): departures_performed summed across
+-- months and carriers, distance kept as the max non-null value seen (fixed
+-- per route). This is the minimal grain src.cache.accessors.get_long_haul_share
+-- actually reads -- it filters by origin/year/class and never selects month
+-- or carrier. See docs/DECISIONS.md "Phase 8: t100_route_agg slimming".
 CREATE TABLE IF NOT EXISTS t100_route_agg (
     year INTEGER NOT NULL,
-    month INTEGER NOT NULL,
     origin TEXT NOT NULL,
     dest TEXT NOT NULL,
     class TEXT NOT NULL,
-    carrier TEXT NOT NULL,
     departures_performed REAL,
-    seats REAL,
-    passengers REAL,
     distance REAL,
     source TEXT NOT NULL,
     fetched_at TEXT NOT NULL,
-    PRIMARY KEY (year, month, origin, dest, class, carrier)
+    PRIMARY KEY (year, origin, dest, class)
 );
 CREATE INDEX IF NOT EXISTS idx_t100_route_origin ON t100_route_agg (origin, year);
 
@@ -146,28 +147,26 @@ def upsert_source_a_rows(conn, rows, source, fetched_at):
 
 
 def upsert_route_agg(conn, agg, source, fetched_at):
+    """
+    `agg` is keyed by (year, origin, dest, class) -> {"departures_performed",
+    "distance"}, as returned by src.cache.t100_aggregate.collapse_to_storage_grain.
+    """
     def gen():
-        for (year, month, origin, dest, cls, carrier), v in agg.items():
+        for (year, origin, dest, cls), v in agg.items():
             yield {
-                "year": year, "month": month, "origin": origin, "dest": dest,
-                "class": cls, "carrier": carrier,
-                "departures_performed": v["departures_performed"],
-                "seats": v["seats"], "passengers": v["passengers"], "distance": v["distance"],
+                "year": year, "origin": origin, "dest": dest, "class": cls,
+                "departures_performed": v["departures_performed"], "distance": v["distance"],
                 "source": source, "fetched_at": fetched_at,
             }
     conn.executemany(
         """
         INSERT INTO t100_route_agg (
-            year, month, origin, dest, class, carrier,
-            departures_performed, seats, passengers, distance, source, fetched_at
+            year, origin, dest, class, departures_performed, distance, source, fetched_at
         ) VALUES (
-            :year, :month, :origin, :dest, :class, :carrier,
-            :departures_performed, :seats, :passengers, :distance, :source, :fetched_at
+            :year, :origin, :dest, :class, :departures_performed, :distance, :source, :fetched_at
         )
-        ON CONFLICT(year, month, origin, dest, class, carrier) DO UPDATE SET
+        ON CONFLICT(year, origin, dest, class) DO UPDATE SET
             departures_performed=excluded.departures_performed,
-            seats=excluded.seats,
-            passengers=excluded.passengers,
             distance=excluded.distance,
             source=excluded.source,
             fetched_at=excluded.fetched_at

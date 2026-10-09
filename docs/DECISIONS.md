@@ -53,6 +53,27 @@ capacity/slot/perimeter constraints), `get_unmet_demand_breakdown`
 - Manual download remains the documented fallback if the scripted POST
   breaks (BTS form internals can change).
 
+### Phase 8: `t100_route_agg` slimming
+The ZIP/CSV columns above (ORIGIN, DEST, DISTANCE, CLASS, SEATS, PASSENGERS,
+DEPARTURES_PERFORMED, UNIQUE_CARRIER, YEAR, MONTH, ...) are the *raw* grain
+`src.cache.t100_aggregate.aggregate_routes` parses -- that aggregation and
+its distance-handling rules (see "0-distance rule" below) are unchanged.
+What's stored in `t100_route_agg` (the cache table) is a further-collapsed
+grain: `(year, origin, dest, class) -> departures_performed (summed across
+months and carriers), distance (max non-null value seen)`. An audit found
+`get_long_haul_share` (`src/cache/accessors.py`) is the table's only
+consumer, it always reads `year = MAX(year)`, and it never selects `month`,
+`carrier`, `seats` or `passengers` -- so the write-time collapse
+(`src.cache.t100_aggregate.collapse_to_storage_grain`, called from
+`scripts/build_cache.py build_route_agg`) drops those columns and only the
+latest calendar year is stored/downloaded by default (`--route-years` still
+accepts explicit years to store more). This cut `data/cache.db` from
+~113.5MB to ~15.7MB (`t100_route_agg` alone: 105MB -> ~7.2MB). A one-time
+migration, `scripts/slim_cache.py`, rebuilds an existing cache.db into
+`data/cache.slim.db` at the new grain and verifies `get_long_haul_share`
+returns byte-identical results against a spread of airports before and
+after.
+
 ## CLASS field
 - Values observed: F, G, L, P.
 - **Verified (Phase 1):** the ZIP's `Documentation.csv` does NOT contain a
