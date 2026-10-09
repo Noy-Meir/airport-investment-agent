@@ -36,9 +36,13 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.cache import accessors, db
 from src.cache.config import CACHE_DB_PATH, RAW_DIR, REFERENCE_DIR
 from src.cache.otp_aggregate import OTPAggregateError, aggregate_otp
+from src.cache.outlook import build_outlook_row
 from src.cache.t100_aggregate import T100AggregateError, aggregate_routes, collapse_to_storage_grain
-from src.clients import ourairports, source_a
+from src.clients import ourairports, runways, source_a
+from src.clients.faa_taf import FaaTafError, fetch_enplanements_xlsx_bytes, fetched_at_stamp as taf_fetched_at_stamp
+from src.clients.faa_taf import parse_enplanements_rows, rows_by_locid
 from src.clients.ourairports import OurAirportsError
+from src.clients.runways import RunwaysError
 from src.clients.source_a import SourceAError
 
 LOG_DIR = os.path.join(os.path.dirname(RAW_DIR), "logs")
@@ -129,6 +133,56 @@ def build_ourairports(conn):
     fetched_at = ourairports.fetched_at_stamp()
     db.upsert_ourairports(conn, rows, ourairports.SOURCE_NAME, fetched_at)
     return [f"  OurAirports: {len(rows)} US airports with an IATA code"]
+
+
+def build_airport_outlook(conn):
+    """
+    Builds the context-only airport_outlook table (FAA TAF enplanement
+    forecast + OurAirports qualifying-runway count), for every airport
+    already in the `ourairports` table. Downloads the TAF zip and
+    runways.csv in memory only -- nothing is written to data/raw/ or
+    committed. See src/cache/outlook.py for the pure matching/CAGR logic.
+    """
+    try:
+        enplanements_rows = parse_enplanements_rows(fetch_enplanements_xlsx_bytes())
+    except FaaTafError as e:
+        return [f"  airport_outlook: FAILED -- FAA TAF download/parse: {e}"]
+    enplanements_by_lid = rows_by_locid(enplanements_rows)
+    lid_set = set(enplanements_by_lid)
+
+    try:
+        runways_by_ref = runways.fetch_runways_by_airport_ref()
+    except RunwaysError as e:
+        return [f"  airport_outlook: FAILED -- OurAirports runways.csv download: {e}"]
+
+    try:
+        airport_keys = ourairports.fetch_airport_keys()
+    except OurAirportsError as e:
+        return [f"  airport_outlook: FAILED -- OurAirports airports.csv key fetch: {e}"]
+
+    our_iata_codes = [r["iata_code"] for r in conn.execute("SELECT iata_code FROM ourairports")]
+
+    out_rows = []
+    unmatched = []
+    for iata in our_iata_codes:
+        keys = airport_keys.get(iata, {})
+        row = build_outlook_row(
+            iata, keys.get("local_code"), keys.get("ourairports_id"),
+            enplanements_by_lid, runways_by_ref, lid_set,
+        )
+        out_rows.append(row)
+        if row["faa_lid"] is None:
+            unmatched.append(iata)
+
+    fetched_at = taf_fetched_at_stamp()
+    db.upsert_airport_outlook(
+        conn, out_rows,
+        "FAA TAF 2025 Enplanements + OurAirports runways.csv/airports.csv", fetched_at,
+    )
+    summary = [f"  airport_outlook: {len(out_rows)} rows ({len(our_iata_codes) - len(unmatched)} matched to a TAF locid)"]
+    if unmatched:
+        summary.append(f"  airport_outlook: {len(unmatched)} unmatched: {unmatched}")
+    return summary
 
 
 def write_reference_files(conn):
@@ -311,12 +365,26 @@ def main():
         help="YYYY-M months to aggregate from data/raw/otp_<year>_<month>.zip "
              "(default: every such file already present in data/raw/)",
     )
+    parser.add_argument(
+        "--outlook-only", action="store_true",
+        help="build/refresh only the airport_outlook table (FAA TAF + runways) -- "
+             "does not touch any other table, does not require data/raw/ files",
+    )
     args = parser.parse_args()
 
     log_path = _configure_logging()
     os.makedirs(os.path.dirname(CACHE_DB_PATH), exist_ok=True)
     conn = db.connect()
     db.init_schema(conn)
+
+    if args.outlook_only:
+        summary = ["Building airport_outlook only ..."]
+        summary += build_airport_outlook(conn)
+        conn.close()
+        summary.append(f"cache.db: {CACHE_DB_PATH}")
+        summary.append(f"full log: {log_path}")
+        print("\n".join(summary[:40]))
+        return
 
     route_years = args.route_years
     if route_years is None:
@@ -344,6 +412,7 @@ def main():
     summary += build_route_agg(conn, route_years)
     summary += build_otp(conn, otp_months)
     summary += build_ourairports(conn)
+    summary += build_airport_outlook(conn)
     summary += write_reference_files(conn)
     summary += report_ttm_diff(conn)
     summary += report_otp_reconciliation(conn)

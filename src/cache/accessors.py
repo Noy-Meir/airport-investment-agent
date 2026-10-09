@@ -489,3 +489,44 @@ def _otp_t100_coverage(conn, code, window):
 
 def now_stamp():
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def get_airport_outlook(conn, code):
+    """
+    Context-only: FAA TAF enplanement forecast (base/+5y/+10y, CAGR) +
+    qualifying-runway count, from the airport_outlook table (see
+    src.cache.outlook). Never used by scoring/ranking. Raises
+    AirportNotFoundError for an airport outside our cached universe
+    entirely; an airport that TAF/runways couldn't be matched to returns a
+    result with NULL TAF/runway fields and match_note explaining why
+    (never silently dropped, never imputed).
+    """
+    airport_code = validate_airport_code(conn, code)
+    method = "FAA TAF 2025 Enplanements (locid-keyed) + OurAirports runways.csv, matched via local_code/iata_code"
+    row = conn.execute(
+        "SELECT faa_lid, taf_base_fy, enplanements_base, enplanements_plus5, enplanements_plus10, "
+        "cagr_5y, cagr_10y, qualifying_runways, enplanements_per_runway, match_note, source, fetched_at "
+        "FROM airport_outlook WHERE iata_code = ?",
+        (airport_code,),
+    ).fetchone()
+    if row is None:
+        return _envelope(
+            None, method, [f"no airport_outlook row cached for {airport_code} -- run the outlook build step"],
+            "no cached data", "low",
+        )
+    result = {
+        "faa_lid": row["faa_lid"],
+        "taf_base_fy": row["taf_base_fy"],
+        "enplanements_base": row["enplanements_base"],
+        "enplanements_plus5": row["enplanements_plus5"],
+        "enplanements_plus10": row["enplanements_plus10"],
+        "cagr_5y": row["cagr_5y"],
+        "cagr_10y": row["cagr_10y"],
+        "qualifying_runways": row["qualifying_runways"],
+        "enplanements_per_runway": row["enplanements_per_runway"],
+    }
+    caveats = ["context-only forward outlook -- not used in scoring, ranking, or any composite score"]
+    if row["match_note"]:
+        caveats.append(f"unmatched to FAA TAF: {row['match_note']}")
+    confidence = "low" if row["faa_lid"] is None else "medium"
+    return _envelope(result, method, caveats, _source_stamp(row["source"], row["fetched_at"]), confidence)

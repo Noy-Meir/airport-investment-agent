@@ -86,5 +86,32 @@ def fetch_us_airports():
     return parse_us_airports(_fetch_csv_text())
 
 
+def parse_airport_keys(csv_text):
+    """
+    Parses the OurAirports CSV into {iata_code: {"ourairports_id": str,
+    "local_code": str or None}} for active (non-closed) US rows with an
+    iata_code -- used by src.cache.outlook to join runways.csv (keyed by
+    the OurAirports numeric id) and to match FAA TAF locid (keyed by
+    local_code, which is the FAA LID for US airports). Separate from
+    parse_us_airports so the `ourairports` cache table's columns are
+    unaffected.
+    """
+    reader = csv.DictReader(io.StringIO(csv_text))
+    keys = {}
+    for r in reader:
+        if r.get("iso_country") != "US" or not r.get("iata_code") or r.get("type") == "closed":
+            continue
+        keys[r["iata_code"]] = {
+            "ourairports_id": r.get("id"),
+            "local_code": (r.get("local_code") or "").strip() or None,
+        }
+    return keys
+
+
+def fetch_airport_keys():
+    """Fetches the live CSV and returns parse_airport_keys() output."""
+    return parse_airport_keys(_fetch_csv_text())
+
+
 def fetched_at_stamp():
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")

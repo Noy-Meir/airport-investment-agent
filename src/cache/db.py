@@ -90,6 +90,28 @@ CREATE TABLE IF NOT EXISTS ourairports (
     source TEXT NOT NULL,
     fetched_at TEXT NOT NULL
 );
+
+-- Context-only forward-looking outlook (FAA TAF enplanement forecast +
+-- OurAirports runway counts). Never read by src/scoring, src/analysis, or
+-- any ranking/composite-score path -- see src/cache/outlook.py. One row
+-- per airport in `ourairports`; unmatched airports keep NULL TAF fields
+-- plus match_note explaining why (no imputation).
+CREATE TABLE IF NOT EXISTS airport_outlook (
+    iata_code TEXT PRIMARY KEY,
+    faa_lid TEXT,
+    taf_base_fy INTEGER,
+    enplanements_base REAL,
+    enplanements_plus5 REAL,
+    enplanements_plus10 REAL,
+    cagr_5y REAL,
+    cagr_10y REAL,
+    qualifying_runways INTEGER,
+    enplanements_per_runway REAL,
+    match_note TEXT,
+    source TEXT NOT NULL,
+    fetched_at TEXT NOT NULL,
+    FOREIGN KEY (iata_code) REFERENCES ourairports (iata_code)
+);
 """
 
 
@@ -247,6 +269,38 @@ def upsert_ourairports(conn, rows, source, fetched_at):
             latitude_deg=excluded.latitude_deg,
             longitude_deg=excluded.longitude_deg,
             scheduled_service=excluded.scheduled_service,
+            source=excluded.source,
+            fetched_at=excluded.fetched_at
+        """,
+        [dict(r, source=source, fetched_at=fetched_at) for r in rows],
+    )
+    conn.commit()
+
+
+def upsert_airport_outlook(conn, rows, source, fetched_at):
+    """`rows` are src.cache.outlook.build_outlook_row() dicts (without source/fetched_at)."""
+    conn.executemany(
+        """
+        INSERT INTO airport_outlook (
+            iata_code, faa_lid, taf_base_fy, enplanements_base, enplanements_plus5,
+            enplanements_plus10, cagr_5y, cagr_10y, qualifying_runways,
+            enplanements_per_runway, match_note, source, fetched_at
+        ) VALUES (
+            :iata_code, :faa_lid, :taf_base_fy, :enplanements_base, :enplanements_plus5,
+            :enplanements_plus10, :cagr_5y, :cagr_10y, :qualifying_runways,
+            :enplanements_per_runway, :match_note, :source, :fetched_at
+        )
+        ON CONFLICT(iata_code) DO UPDATE SET
+            faa_lid=excluded.faa_lid,
+            taf_base_fy=excluded.taf_base_fy,
+            enplanements_base=excluded.enplanements_base,
+            enplanements_plus5=excluded.enplanements_plus5,
+            enplanements_plus10=excluded.enplanements_plus10,
+            cagr_5y=excluded.cagr_5y,
+            cagr_10y=excluded.cagr_10y,
+            qualifying_runways=excluded.qualifying_runways,
+            enplanements_per_runway=excluded.enplanements_per_runway,
+            match_note=excluded.match_note,
             source=excluded.source,
             fetched_at=excluded.fetched_at
         """,
