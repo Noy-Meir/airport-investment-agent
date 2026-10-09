@@ -3,6 +3,8 @@ Pure display/formatting logic for the Streamlit chat UI. No streamlit
 import here so this module stays unit-testable without a running app.
 """
 
+import json
+import os
 import re
 
 SPEECH_TEXT_CAP = 1200
@@ -90,3 +92,124 @@ def error_to_message(error):
         return _ERROR_MESSAGES["other"]
     category = error.get("type", "other")
     return _ERROR_MESSAGES.get(category, _ERROR_MESSAGES["other"])
+
+
+def _format_vintage_for_caption(name, vintage, is_faa=False):
+    """
+    Formats a vintage string for the data sources caption.
+    If vintage contains a range "A..B", renders "<name> (<text before the date>, through B)".
+    If no range, renders "<name> (<vintage>)".
+    E.g. "monthly, 2023-01..2026-04" -> "BTS T-100 (monthly, through 2026-04)"
+    """
+    if is_faa:
+        return "FAA Terminal Area Forecast (actuals through 2024)"
+
+    if not vintage:
+        return name
+
+    # Look for range pattern "A..B"
+    if ".." in vintage:
+        parts = vintage.split("..")
+        if len(parts) == 2:
+            # For "monthly, 2023-01", take everything up to the last comma
+            before_range = parts[0]
+            if "," in before_range:
+                # Keep only the part before the last comma (e.g. "monthly" from "monthly, 2023-01")
+                before = before_range.rsplit(",", 1)[0].strip()
+            else:
+                before = before_range.strip()
+            after = parts[1].strip()
+            return f"{name} ({before}, through {after})"
+
+    return f"{name} ({vintage})"
+
+
+def data_sources_caption():
+    """
+    Builds a caption line from data/sources_manifest.json listing data sources
+    and vintages. Returns the caption string, or an empty string if the manifest
+    cannot be read.
+    """
+    try:
+        from src.cache.config import REPO_ROOT
+        manifest_path = os.path.join(REPO_ROOT, "data", "sources_manifest.json")
+        with open(manifest_path) as f:
+            sources = json.load(f)
+    except Exception:
+        return ""
+
+    # Map source IDs to their display format
+    parts = []
+    source_ids_order = ["bts_t100_airport_month", "bts_otp", "faa_taf_2025", "ourairports"]
+    seen = set()
+
+    for source_id in source_ids_order:
+        for source in sources:
+            if source.get("id") == source_id and source_id not in seen:
+                seen.add(source_id)
+                vintage = source.get('vintage', '')
+
+                if source_id == "bts_t100_airport_month":
+                    parts.append(_format_vintage_for_caption("BTS T-100", vintage))
+                elif source_id == "bts_otp":
+                    parts.append(_format_vintage_for_caption("BTS OTP", vintage))
+                elif source_id == "faa_taf_2025":
+                    parts.append(_format_vintage_for_caption("FAA TAF", vintage, is_faa=True))
+                elif source_id == "ourairports":
+                    parts.append("OurAirports")
+
+    return "Data: " + " · ".join(parts) if parts else ""
+
+
+def answer_metadata_badges(mode, elapsed_seconds, trace):
+    """
+    Builds a caption line with badges for answer mode, elapsed time, and
+    confidence (if available in trace).
+
+    `mode`: "rules" or "llm" (or the AI model label if from outcome["mode"])
+    `elapsed_seconds`: numeric seconds elapsed for this turn
+    `trace`: list of tool call results, or empty list if no tools called
+
+    Returns the formatted badge line string (e.g. "rules-based · 2.3 s · confidence: high").
+    """
+    badges = []
+
+    # Mode badge
+    if mode == "rules":
+        badges.append("rules-based")
+    elif mode == "llm":
+        badges.append("AI model")
+    else:
+        badges.append(mode)
+
+    # Elapsed time badge
+    badges.append(f"{elapsed_seconds:.1f} s")
+
+    # Confidence badge (only if available from tool envelopes)
+    if trace:
+        confidences = []
+        for call in trace:
+            result = call.get("result", {})
+            if isinstance(result, dict) and "confidence" in result:
+                conf = result["confidence"]
+                if conf:
+                    confidences.append(conf)
+        if confidences:
+            # Return the lowest confidence
+            min_conf = min(confidences, key=lambda x: {"low": 0, "medium": 1, "high": 2}.get(x, 2))
+            badges.append(f"confidence: {min_conf}")
+
+    return " · ".join(badges)
+
+
+def render_assistant_message_with_badge(message_dict):
+    """
+    Helper to render an assistant message that may have a stored badge line.
+    `message_dict` is a dict with "role", "content", and optionally "badge_line".
+    Returns a dict with "content" and "badge_line" (or badge_line is None/missing).
+    This is testable pure logic; app.py wraps it with st.caption/st.markdown.
+    """
+    return {
+        "content": message_dict.get("content", ""),
+        "badge_line": message_dict.get("badge_line"),
+    }

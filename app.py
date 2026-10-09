@@ -3,6 +3,8 @@ Thin Streamlit chat UI over src.agent.agent.run_turn. All formatting logic
 lives in src/ui/chat_logic.py so it can be unit-tested without streamlit.
 """
 
+import time
+
 import streamlit as st
 
 from src.agent.config import load_config
@@ -10,13 +12,19 @@ from src.agent.respond import Session, respond
 from src.cache.db import connect
 from src.ui.chat_logic import (
     SAMPLE_QUESTIONS,
+    answer_metadata_badges,
+    data_sources_caption,
+    render_assistant_message_with_badge,
     speech_text,
 )
 from src.ui.speech_component import render_speech_controls, render_voice_assets
 
 st.set_page_config(page_title="Airport Investment Intelligence Agent", page_icon="✈️")
 st.title("Airport Investment Intelligence Agent")
-st.caption("A screening aid for US airports, built on public BTS and OurAirports data.")
+st.caption("A screening aid for US airports, built on public BTS, FAA and OurAirports data.")
+sources_caption = data_sources_caption()
+if sources_caption:
+    st.caption(sources_caption)
 
 _MODE_LABELS = {
     "Auto": "auto",
@@ -77,9 +85,14 @@ render_voice_assets()
 
 for idx, message in enumerate(st.session_state.messages):
     with st.chat_message(message["role"]):
-        st.markdown(message["content"])
         if message["role"] == "assistant":
-            render_speech_controls(speech_text(message["content"]), key=f"speech-{idx}")
+            rendered = render_assistant_message_with_badge(message)
+            if rendered.get("badge_line"):
+                st.caption(rendered["badge_line"])
+            st.markdown(rendered["content"])
+            render_speech_controls(speech_text(rendered["content"]), key=f"speech-{idx}")
+        else:
+            st.markdown(message["content"])
 
 user_text = st.chat_input("Ask about airport investment opportunities...")
 if not user_text and st.session_state.pending_question:
@@ -93,6 +106,7 @@ if user_text:
 
     with st.chat_message("assistant"):
         with st.spinner("Working..."):
+            start_time = time.perf_counter()
             conn = connect()
             try:
                 provider_override = _MODE_LABELS[st.session_state.answer_mode]
@@ -101,8 +115,15 @@ if user_text:
                 )
             finally:
                 conn.close()
+            elapsed = time.perf_counter() - start_time
 
+        badges = answer_metadata_badges(outcome["mode"], elapsed, outcome["trace"])
+        st.caption(badges)
         new_key = f"speech-{len(st.session_state.messages)}"
         st.markdown(outcome["answer"])
         render_speech_controls(speech_text(outcome["answer"]), key=new_key)
-        st.session_state.messages.append({"role": "assistant", "content": outcome["answer"]})
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": outcome["answer"],
+            "badge_line": badges,
+        })
