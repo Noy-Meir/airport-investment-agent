@@ -312,7 +312,10 @@ def test_followup_reweight_unsupported_factor_offers_sensitivity():
 
 def test_next_state_tracks_scope_tool_and_ranking_order():
     p = plan("Which airports in New England look like good expansion candidates?")
-    result = {"result": [{"code": "BDL"}, {"code": "PWM"}], "method": "m", "caveats": [], "source": "s", "confidence": "medium"}
+    result = {
+        "result": {"scope": "region:new_england", "ranked": [{"airport": "BDL"}, {"airport": "PWM"}]},
+        "method": "m", "caveats": [], "source": "s", "confidence": "medium",
+    }
     s = next_state(None, p, result)
     assert s.last_tool == "rank_airports"
     assert s.last_scope == {"region": "new_england"}

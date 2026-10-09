@@ -26,14 +26,21 @@ New in this step:
   instead of a custom one-off reweighting, which the registry doesn't
   support).
 
-Still out of scope here (see docs/DECISIONS.md): actually calling
-call_tool(). That's a later step; `intent="restate"` and the follow-up
-Plans above are planned but not executed by this module.
+Phase 8 step 3b-3 adds answer(message, state=None, conn=None) -> dict, which
+actually executes a Plan: calls call_tool() for tool-bearing plans, narrates
+the result with src.agent.narrators.narrate, and returns the same shape the
+UI already consumes from src.agent.agent.run_turn (answer/trace/usage) plus
+`state` (the State to pass into the next turn) and `mode: "rules"`. This is
+the non-LLM path: no Anthropic API call, zero cost, deterministic.
 """
 
+import logging
 import re
+import time
 from dataclasses import dataclass
 from typing import List, NamedTuple, Optional
+
+logger = logging.getLogger(__name__)
 
 
 class Plan(NamedTuple):
@@ -83,9 +90,15 @@ def next_state(state, plan_, result):
         airports = prior_airports
 
     ranking_order = prior_order
-    if isinstance(result, dict) and isinstance(result.get("result"), list):
-        rows = result["result"]
-        codes_in_result = [row.get("code") for row in rows if isinstance(row, dict) and row.get("code")]
+    inner = result.get("result") if isinstance(result, dict) else None
+    if isinstance(inner, dict) and isinstance(inner.get("ranked"), list):
+        # rank_airports/sensitivity entries key the code as "airport";
+        # rank_airports_by_traffic keys it as "code".
+        codes_in_result = [
+            e.get("airport") or e.get("code")
+            for e in inner["ranked"]
+            if isinstance(e, dict) and (e.get("airport") or e.get("code"))
+        ]
         if codes_in_result:
             ranking_order = codes_in_result
 
@@ -615,6 +628,90 @@ def plan(message, state=None, conn=None):
         return _refusal("non_aviation")
 
     return _help()
+
+
+# --- execution ----------------------------------------------------------
+
+_ZERO_USAGE = {
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 0,
+    "estimated_cost_usd": 0.0,
+    "cost_note": "Rules router: no model call, no cost.",
+}
+
+_FALLBACK_MESSAGE = "I couldn't match this to a specific question. Try rephrasing."
+
+
+def _restate_text(state):
+    prefix = (
+        "Restating the assumptions, confidence, and caveats from the previous answer:\n\n"
+    )
+    from src.agent.narrators import narrate
+
+    return prefix + narrate(state.last_tool, state.last_envelope)
+
+
+def _answer_inner(message, state, conn):
+    from src.agent.narrators import narrate
+    from src.tools.registry import call_tool
+
+    # Airport-code resolution deliberately does not use `conn` here: without
+    # it, an exact-uppercase token like "ZZZ" is still treated as a planned
+    # airport code (see resolve_airport_codes's docstring) and the call_tool
+    # below surfaces the real AirportNotFoundError, narrated plainly --
+    # rather than plan() silently dropping it as "not a real airport" before
+    # the tool ever runs.
+    p = plan(message, state=state)
+
+    if p.tool is None:
+        if p.intent == "restate":
+            text = _restate_text(state)
+        else:
+            text = p.message or _FALLBACK_MESSAGE
+        return {
+            "answer": text,
+            "trace": [],
+            "usage": dict(_ZERO_USAGE),
+            "state": next_state(state, p, None),
+            "mode": "rules",
+        }
+
+    t0 = time.perf_counter()
+    result = call_tool(p.tool, p.args, conn=conn)
+    ms = (time.perf_counter() - t0) * 1000
+    trace = [{"tool": p.tool, "args": p.args, "result": result, "ms": ms}]
+    text = narrate(p.tool, result)
+    return {
+        "answer": text,
+        "trace": trace,
+        "usage": dict(_ZERO_USAGE),
+        "state": next_state(state, p, result),
+        "mode": "rules",
+    }
+
+
+def answer(message, state=None, conn=None):
+    """Executes one turn through the deterministic rules router: plans,
+    calls at most one tool (never raises -- call_tool itself is exception-
+    safe and any tool error is narrated, not thrown), narrates, and folds
+    the outcome into the next State. Mirrors the dict shape returned by
+    src.agent.agent.run_turn (answer/trace/usage), plus `state` and
+    `mode: "rules"`. Never raises: any unexpected exception here becomes a
+    short plain-language message, with the exception type logged (not
+    shown to the user)."""
+    try:
+        return _answer_inner(message, state, conn)
+    except Exception:
+        logger.exception("rules_router.answer failed")
+        return {
+            "answer": "Something went wrong answering this; try rephrasing.",
+            "trace": [],
+            "usage": dict(_ZERO_USAGE),
+            "state": state if state is not None else State(),
+            "mode": "rules",
+        }
 
 
 # --- eval harness (run as a script: python -m src.agent.rules_router) ------
